@@ -118,9 +118,9 @@ OLED GPS states:
 
 ### Heart rate and SpO2
 
-The MAX30102 is configured for RED/IR acquisition at 100 samples per second. A slow estimator separates the DC component, while filtered AC samples are used for pulse detection. BPM is calculated from valid RR intervals. SpO2 is estimated from the normalized RED and IR AC/DC ratio and then bounded to the prototype's display range.
+The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-bit conversion, a 4096 nA ADC range, and approximately 8.6 mA on each LED. A slow estimator separates the DC component, while filtered AC samples are used for pulse detection. The adaptive beat detector requires a positive phase before accepting a negative local minimum, preventing repeated triggers within one pulse while remaining responsive to low-amplitude signals. BPM is calculated from valid RR intervals. SpO2 is estimated from the normalized RED and IR AC/DC ratio and then bounded to the prototype's display range.
 
-After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. The latest BPM and SpO2 values are cached in RAM and shown immediately when the finger is placed again while a fresh measurement is being acquired.
+After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. Results are never carried into the next finger-contact session, preventing a new user from seeing the previous user's measurements.
 
 ### Step counting
 
@@ -140,6 +140,7 @@ The repository includes lightweight host-side consistency tests for the decision
 
 ```bash
 python3 tests/algorithm_selfcheck.py
+python3 tests/ppg_beat_detector_selfcheck.py
 python3 tests/ppg_retention_selfcheck.py
 ```
 
@@ -155,6 +156,7 @@ The tests use only the Python standard library and mirror the firmware threshold
 ├── output/pdf/                    # Compiled submission-ready reports
 ├── tests/
 │   ├── algorithm_selfcheck.py     # Step-counting and fall-state checks
+│   ├── ppg_beat_detector_selfcheck.py # Adaptive beat-detection checks
 │   └── ppg_retention_selfcheck.py # PPG display-retention checks
 └── README.md
 ```

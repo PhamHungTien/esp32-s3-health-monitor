@@ -11,8 +11,6 @@ class PPGDisplayState:
         self.spo2_valid = True
         self.bpm = 78.0
         self.spo2 = 97.0
-        self.cached_bpm = 78.0
-        self.cached_spo2 = 97.0
         self.release_start_ms: int | None = None
         self.replace_bpm_on_next_interval = False
 
@@ -34,11 +32,6 @@ class PPGDisplayState:
             self.bpm = 0.0
             self.spo2 = 0.0
 
-    def place_finger(self) -> tuple[float, float]:
-        self.finger_present = True
-        self.release_start_ms = None
-        return self.cached_bpm, self.cached_spo2
-
     def handle_pulse_timeout(self) -> None:
         self.replace_bpm_on_next_interval = True
 
@@ -47,13 +40,11 @@ class PPGDisplayState:
             self.bpm = value
             self.heart_rate_valid = True
             self.replace_bpm_on_next_interval = False
-            self.cached_bpm = value
 
     def update_spo2(self, value: float, window_valid: bool) -> None:
         if window_valid:
             self.spo2 = 0.8 * self.spo2 + 0.2 * value
             self.spo2_valid = True
-            self.cached_spo2 = self.spo2
 
 
 def main() -> None:
@@ -81,15 +72,10 @@ def main() -> None:
     assert not state.finger_present
     assert not state.heart_rate_valid and not state.spo2_valid
 
-    displayed_bpm, displayed_spo2 = state.place_finger()
-    assert displayed_bpm == 92.0
-    assert displayed_spo2 == 97.0
-
     print("PPG_TRANSIENT_GAP_RETAINS_VALUES=PASS")
     print("PPG_PULSE_TIMEOUT_RETAINS_BPM=PASS")
     print("PPG_BAD_SPO2_WINDOW_RETAINS_VALUE=PASS")
     print("PPG_CONFIRMED_FINGER_RELEASE_CLEARS_VALUES=PASS")
-    print("PPG_RETOUCH_SHOWS_CACHED_VALUES_IMMEDIATELY=PASS")
 
 
 if __name__ == "__main__":

@@ -58,12 +58,8 @@ struct PPGMetrics {
   bool fingerPresent;
   bool heartRateValid;
   bool spo2Valid;
-  bool cachedBpmAvailable;
-  bool cachedSpo2Available;
   float bpm;
   float spo2;
-  float cachedBpm;
-  float cachedSpo2;
   float signalQuality;
   uint32_t redRaw;
   uint32_t irRaw;
@@ -84,6 +80,7 @@ struct PPGFilterState {
   uint16_t windowSamples;
   uint32_t fingerStartMs;
   uint32_t fingerReleaseStartMs;
+  bool beatArmed;
   bool replaceBpmOnNextInterval;
 };
 
@@ -473,8 +470,9 @@ bool MAX30102_Init() {
   // ADC 4096 nA, 100 mẫu/giây, độ rộng xung 411 us.
   if (!I2C_WriteRegister(MAX30102_ADDR, 0x0A, 0x27)) return false;
   // Dòng LED đỏ và hồng ngoại khoảng 7 mA.
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0C, 0x24)) return false;
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0D, 0x24)) return false;
+  // Khoảng 8,6 mA mỗi LED: tăng SNR nhưng vẫn giữ mức DC trong vùng 1/4--3/4 ADC.
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0C, 0x2C)) return false;
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0D, 0x2C)) return false;
   // Chế độ SpO2 trả về lần lượt mẫu RED và IR.
   if (!I2C_WriteRegister(MAX30102_ADDR, 0x09, 0x03)) return false;
   return true;
@@ -484,7 +482,6 @@ void PPG_ResetMetrics() {
   ppg.fingerPresent = false;
   ppg.heartRateValid = false;
   ppg.spo2Valid = false;
-  // cachedBpm/cachedSpo2 được giữ lại để lần đặt tay kế tiếp có số hiển thị ngay.
   ppg.bpm = 0.0f;
   ppg.spo2 = 0.0f;
   ppg.signalQuality = 0.0f;
@@ -494,7 +491,10 @@ void PPG_ResetMetrics() {
 
 void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeMs) {
   PPGFilterState &state = ppgFilter;
+  constexpr uint32_t PPG_SETTLE_MS = 400;
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
+  constexpr uint32_t MIN_RR_MS = 333;
+  constexpr uint32_t MAX_RR_MS = 1500;
 
   ppg.redRaw = redValue;
   ppg.irRaw = irValue;
@@ -532,7 +532,7 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   uint32_t fingerAgeMs = now - state.fingerStartMs;
 
   // Tách DC/AC bằng bộ lọc IIR tại tốc độ mẫu 100 Hz.
-  float dcAlpha = fingerAgeMs < 800 ? 0.12f : 0.01f;
+  float dcAlpha = fingerAgeMs < PPG_SETTLE_MS ? 0.20f : 0.01f;
   state.dcRed += dcAlpha * ((float)redValue - state.dcRed);
   state.dcIr += dcAlpha * ((float)irValue - state.dcIr);
   float redAC = (float)redValue - state.dcRed;
@@ -540,17 +540,19 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   state.filtered += 0.25f * (irAC - state.filtered);
 
   // Không đưa quá trình đặt tay vào ngưỡng nhịp và cửa sổ SpO2.
-  if (fingerAgeMs < 800) {
+  if (fingerAgeMs < PPG_SETTLE_MS) {
     state.filtered = 0.0f;
     state.previousFiltered = 0.0f;
     state.previousSlope = 0.0f;
     state.envelope = 0.0f;
     state.redSquareSum = state.irSquareSum = 0.0;
     state.windowSamples = 0;
+    // Cho phép lấy đáy đầu tiên ngay sau giai đoạn khởi tạo làm mốc RR.
+    state.beatArmed = true;
     return;
   }
 
-  state.envelope += 0.01f * (fabsf(state.filtered) - state.envelope);
+  state.envelope += 0.025f * (fabsf(state.filtered) - state.envelope);
 
   state.redSquareSum += (double)redAC * redAC;
   state.irSquareSum += (double)irAC * irAC;
@@ -558,13 +560,20 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
 
   // Đáy cục bộ của tín hiệu IR đánh dấu một nhịp.
   float slope = state.filtered - state.previousFiltered;
-  float peakThreshold = state.envelope * 0.95f;
-  if (peakThreshold < 100.0f) peakThreshold = 100.0f;
-  if (state.previousSlope < 0.0f && slope >= 0.0f &&
-      state.previousFiltered < -peakThreshold && now - ppg.lastBeatMs > 450) {
-    if (ppg.lastBeatMs != 0) {
+  float peakThreshold = state.envelope * 0.55f;
+  if (peakThreshold < 35.0f) peakThreshold = 35.0f;
+
+  // Pha dương phải xuất hiện trước pha âm để mỗi chu kỳ chỉ tạo một nhịp.
+  if (state.filtered > peakThreshold * 0.45f) state.beatArmed = true;
+  if (state.beatArmed && state.previousSlope < 0.0f && slope >= 0.0f &&
+      state.previousFiltered < -peakThreshold &&
+      (ppg.lastBeatMs == 0 || now - ppg.lastBeatMs > 280)) {
+    state.beatArmed = false;
+    if (ppg.lastBeatMs == 0) {
+      ppg.lastBeatMs = now;
+    } else {
       uint32_t interval = now - ppg.lastBeatMs;
-      if (interval >= 480 && interval <= 1500) {
+      if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
         float instantBPM = 60000.0f / interval;
         if (!ppg.heartRateValid || state.replaceBpmOnNextInterval) {
           // Khoảng RR hợp lệ đầu tiên được hiển thị ngay.
@@ -574,11 +583,12 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
         } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
           ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
         }
-        ppg.cachedBpm = ppg.bpm;
-        ppg.cachedBpmAvailable = true;
+        ppg.lastBeatMs = now;
+      } else if (interval > MAX_RR_MS) {
+        // Khoảng quá dài bắt đầu một cặp nhịp mới; xung quá gần bị bỏ qua.
+        ppg.lastBeatMs = now;
       }
     }
-    ppg.lastBeatMs = now;
   }
   state.previousSlope = slope;
   state.previousFiltered = state.filtered;
@@ -609,8 +619,6 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
           ppg.spo2 = ppg.spo2Valid ?
                        (0.8f * ppg.spo2 + 0.2f * estimatedSpO2) : estimatedSpO2;
           ppg.spo2Valid = true;
-          ppg.cachedSpo2 = ppg.spo2;
-          ppg.cachedSpo2Available = true;
         }
       }
     }
@@ -824,21 +832,15 @@ void OLED_RenderStatus() {
   OLED_DrawRect(66, 17, 61, 23);
   OLED_DrawText(19, 19, "BPM");
   OLED_DrawText(79, 19, "SPO2");
-  bool showBpm = ppg.fingerPresent &&
-                 (ppg.heartRateValid || ppg.cachedBpmAvailable);
-  if (showBpm) {
-    float displayedBpm = ppg.heartRateValid ? ppg.bpm : ppg.cachedBpm;
-    snprintf(line, sizeof(line), "%3d", (int)(displayedBpm + 0.5f));
+  if (ppg.fingerPresent && ppg.heartRateValid) {
+    snprintf(line, sizeof(line), "%3d", (int)(ppg.bpm + 0.5f));
   } else {
     strcpy(line, ppg.fingerPresent ? "..." : " --");
   }
   OLED_DrawTextScaled(11, 26, line, 2);
 
-  bool showSpo2 = ppg.fingerPresent &&
-                  (ppg.spo2Valid || ppg.cachedSpo2Available);
-  if (showSpo2) {
-    float displayedSpo2 = ppg.spo2Valid ? ppg.spo2 : ppg.cachedSpo2;
-    snprintf(line, sizeof(line), "%3d", (int)(displayedSpo2 + 0.5f));
+  if (ppg.fingerPresent && ppg.spo2Valid) {
+    snprintf(line, sizeof(line), "%3d", (int)(ppg.spo2 + 0.5f));
   } else {
     strcpy(line, ppg.fingerPresent ? "..." : " --");
   }
