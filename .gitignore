@@ -1,0 +1,11 @@
+# macOS metadata
+.DS_Store
+**/.DS_Store
+._*
+
+# Local build and visual-review artifacts
+tmp/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
