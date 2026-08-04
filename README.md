@@ -3,6 +3,7 @@
 [![Platform](https://img.shields.io/badge/platform-ESP32--S3-12355B)](https://www.espressif.com/en/products/socs/esp32-s3)
 [![Framework](https://img.shields.io/badge/framework-Arduino%20Core-187795)](https://github.com/espressif/arduino-esp32)
 [![Dependencies](https://img.shields.io/badge/third--party%20libraries-none-287D52)](#software-dependencies)
+[![License](https://img.shields.io/badge/license-MIT-F4A261)](LICENSE)
 [![Status](https://img.shields.io/badge/status-academic%20prototype-F4A261)](#safety-and-limitations)
 
 An academic wearable prototype built around the ESP32-S3 N16R8. The system measures heart rate, estimates blood oxygen saturation, counts steps, detects possible falls, receives GPS coordinates, displays live status on an OLED, and drives an audible alert.
@@ -182,4 +183,4 @@ This project was developed by students from the Faculty of Electronics and Telec
 
 ## License
 
-No open-source license has been selected for this repository. Unless a license is added, reuse and redistribution are not automatically granted.
+This project is released under the [MIT License](LICENSE). You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software subject to the license terms.
