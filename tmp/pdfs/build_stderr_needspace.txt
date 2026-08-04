@@ -1,0 +1,15 @@
+/Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/00_bang_phan_cong_danh_gia.xdv -> /Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/00_bang_phan_cong_danh_gia.pdf
+[1][2][3]
+98895 bytes written
+/Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/01_bao_cao_ca_nhan_pham_hung_tien.xdv -> /Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/01_bao_cao_ca_nhan_pham_hung_tien.pdf
+[1][2][3][4][5]
+126183 bytes written
+/Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/02_bao_cao_ca_nhan_ho_si_phu.xdv -> /Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/02_bao_cao_ca_nhan_ho_si_phu.pdf
+[1][2][3][4][5]
+133844 bytes written
+/Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/03_bao_cao_ca_nhan_quach_gia_thinh.xdv -> /Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/03_bao_cao_ca_nhan_quach_gia_thinh.pdf
+[1][2][3][4][5][6]
+137844 bytes written
+/Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/04_bao_cao_chung_nhom.xdv -> /Users/phamhungtien/Documents/PROJECT ESP/tmp/pdfs/04_bao_cao_chung_nhom.pdf
+[1][2][3][4][5][6][7][8][9][10]
+145221 bytes written

@@ -1,0 +1,375 @@
+\documentclass[12pt]{article}
+\newcommand{\ReportShortTitle}{Báo cáo chung nhóm}
+\input{common/preamble}
+
+\begin{document}
+\MakeGroupCover{BÁO CÁO CHUNG TỔNG KẾT NHÓM}
+
+\tableofcontents
+\clearpage
+
+\section{Tóm tắt đồ án}
+
+Nhóm xây dựng thiết bị nguyên mẫu dùng ESP32-S3 để đo nhịp tim, ước lượng nồng độ oxy trong máu, đếm bước, hiển thị trên OLED, phát hiện té ngã và lấy vị trí GPS. Chương trình chỉ dùng thành phần giao tiếp thuộc ESP32 Arduino Core; driver cảm biến, xử lý tín hiệu và parser được viết trong sketch.
+
+\begin{summarybox}[Kết quả chính]
+Ba thiết bị I2C được nhận đồng thời; màn hình hiển thị giao diện sức khỏe; MAX30102 phát hiện ngón tay và BPM hội tụ; IMU trả gia tốc nghỉ xấp xỉ 1$g$; GPS nhận NMEA, bắt FIX với 4 vệ tinh ở lần chạy cuối và xuất tọa độ. Kênh LEDC cho buzzer được khởi tạo trên GPIO42 và mã cảnh báo đã được cài đặt; âm lượng thực tế còn phụ thuộc loại loa và tầng công suất. Firmware biên dịch và nạp thành công lên ESP32-S3 N16R8. Đếm bước và té ngã đã có thuật toán nhưng vẫn cần thêm phép thử thực tế để xác định sai số.
+\end{summarybox}
+
+\section{Đối chiếu yêu cầu nộp bài}
+
+Phần cuối buổi học ngày 23/07 nêu ba loại hồ sơ và yêu cầu phần việc cá nhân không trùng nhau. Nhóm chuẩn bị các tệp theo bảng sau.
+
+\noindent\begin{tabularx}{\textwidth}{L{4.0cm} Y C{2.2cm}}
+\toprule
+\textbf{Hồ sơ/yêu cầu} & \textbf{Cách thực hiện} & \textbf{Đối chiếu}\\
+\midrule
+Bảng phân công và đánh giá & Một tệp chung, nêu tính năng, kết quả và tỷ lệ đóng góp của từng người & \OK\\
+Báo cáo công việc cá nhân & Ba tệp riêng; mỗi tệp mô tả phần mã, phép thử và hạn chế của đúng mô-đun được giao & \OK\\
+Báo cáo chung tổng kết & Một tệp dùng chung, tổng hợp kiến trúc, kết quả và phần chưa hoàn thiện & \OK\\
+Không tính ``tìm tài liệu'' là nhiệm vụ & Mỗi thành viên chịu một khối kỹ thuật có đầu ra chạy được; tài liệu chỉ nằm ở mục tham khảo & \OK\\
+Không trùng phần việc cá nhân & Tích hợp/hiển thị; PPG; IMU--GPS được tách thành ba phạm vi khác nhau & \OK\\
+Báo cáo đúng tiến độ thực tế & SpO$_2$, đếm bước và té ngã được ghi rõ phần còn phải hiệu chuẩn/thử thêm & \OK\\
+\bottomrule
+\end{tabularx}
+
+\section{Yêu cầu và phạm vi}
+
+\begin{tabularx}{\textwidth}{L{4.4cm} Y C{2.1cm}}
+\toprule
+\textbf{Yêu cầu} & \textbf{Cách đáp ứng} & \textbf{Trạng thái}\\
+\midrule
+Đo nhịp tim & Thu PPG IR 100 Hz, dò nhịp, làm mượt BPM & \OK\\
+Ước lượng SpO$_2$ & Ratio-of-ratios từ RED/IR, cờ chất lượng & \Pending\\
+Đếm bước & Lọc gia tốc động, kiểm tra chu kỳ bước & \Implemented\\
+Hiển thị tại chỗ & Driver SSD1306, BPM/SpO$_2$ cỡ lớn & \OK\\
+Cảnh báo té ngã & Chuỗi rơi tự do--va đập--bất động & \Implemented\\
+Định vị & UART, checksum NMEA, parser GGA/RMC & \OK\\
+Âm báo & PWM LEDC trên GPIO42, hai âm xen kẽ khi ALERT & \Implemented\\
+Không dùng thư viện ngoài & Driver và parser viết trong sketch & \OK\\
+\bottomrule
+\end{tabularx}
+
+\section{Kiến trúc hệ thống}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=8mm and 12mm,
+  block/.style={draw=Primary,rounded corners,fill=SoftBlue,minimum width=31mm,minimum height=11mm,align=center,font=\small},
+  core/.style={draw=Secondary,very thick,rounded corners,fill=Secondary!15,minimum width=40mm,minimum height=16mm,align=center,font=\bfseries},
+  arrow/.style={-{Latex[length=2.2mm]},thick,color=Primary}
+]
+\node[core] (esp) {ESP32-S3 N16R8\\Bộ lập lịch không chặn};
+\node[block,above left=of esp] (ppg) {MAX30102\\RED/IR, FIFO};
+\node[block,left=of esp] (imu) {IMU 0x68\\Gia tốc, số bước};
+\node[block,below left=of esp] (gps) {GPS UART\\NMEA 9600 baud};
+\node[block,above right=of esp] (algo) {BPM, SpO$_2$\\Chất lượng tín hiệu};
+\node[block,right=of esp] (fall) {Máy trạng thái\\phát hiện té ngã};
+\node[block,below right=of esp] (oled) {OLED SSD1306\\Giao diện/cảnh báo};
+\draw[arrow] (ppg) -- (esp);
+\draw[arrow] (imu) -- (esp);
+\draw[arrow] (gps) -- (esp);
+\draw[arrow] (esp) -- (algo);
+\draw[arrow] (esp) -- (fall);
+\draw[arrow] (esp) -- (oled);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Bảng kết nối}
+
+\begin{tabularx}{\textwidth}{L{3.4cm} L{3.0cm} L{3.0cm} Y}
+\toprule
+\textbf{Khối} & \textbf{Giao tiếp} & \textbf{Tài nguyên} & \textbf{Ghi chú}\\
+\midrule
+OLED SSD1306 & I2C, 0x3C & SDA GPIO8, SCL GPIO9 & VCC 3,3 V; GND chung\\
+MAX30102 & I2C, 0x57 & Chung SDA/SCL & VCC 3,3 V; FIFO 100 Hz\\
+IMU tương thích MPU & I2C, 0x68 & Chung SDA/SCL & WHO\_AM\_I 0x74; đọc gia tốc từ 0x3B\\
+GPS & UART1 phần cứng & RX GPIO21, TX GPIO47 & GPS TX nối GPIO21; GPS RX nối GPIO47; 9600 baud\\
+Loa piezo/buzzer & PWM LEDC & SPK+ GPIO42, SPK- GND & Cảnh báo té ngã; camera không dùng\\
+USB & USB native & USB-Serial/JTAG & Nạp và nhật ký\\
+\bottomrule
+\end{tabularx}
+
+\begin{warningbox}[Ràng buộc bo camera]
+GPIO8 và GPIO9 cũng thuộc nhóm tín hiệu camera trên bo Freenove ESP32-S3 Camera. Trong cấu hình đồ án, camera không được sử dụng và phải tách khỏi hai chân này để tránh tranh chấp với bus I2C.
+\end{warningbox}
+
+\subsection{Hình ảnh các linh kiện chính}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio]{assets/components/esp32s3_freenove.jpg}
+    \\[2pt]\small (a) Bo điều khiển Freenove ESP32-S3 N16R8.
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio,trim=110 30 110 30,clip]{assets/components/oled_ssd1306.jpg}
+    \\[2pt]\small (b) OLED SSD1306 128x64 tham chiếu.
+  \end{minipage}
+
+  \vspace{5mm}
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.90\linewidth,height=4.0cm,keepaspectratio]{assets/components/max30102_board_overview.jpg}
+    \\[2pt]\small (c) Bo breakout MAX30102 tham chiếu.
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.66\linewidth,height=4.0cm,keepaspectratio,trim=180 55 180 55,clip]{assets/components/gps_neo6m_reference.jpg}
+    \\[2pt]\small (d) Mô-đun GPS UART tham chiếu.
+  \end{minipage}
+  \caption{Nhóm linh kiện chính của nguyên mẫu. Ảnh bo điều khiển là đúng dòng sản phẩm; ảnh OLED, MAX30102 và GPS thể hiện loại linh kiện/giao tiếp, không dùng để khẳng định nhà sản xuất của các bo breakout đang lắp. Nguồn: Freenove, Waveshare và DFRobot.}
+  \label{fig:group-components}
+\end{figure}
+
+\section{Thiết kế phần mềm}
+
+\subsection{Tổ chức chương trình}
+
+Theo yêu cầu của đồ án, chương trình chỉ dùng các thành phần có sẵn trong ESP32 Arduino Core như \Code{Wire}, UART phần cứng và \Code{millis()}. Các phần được cài đặt trong sketch gồm:
+
+\begin{itemize}
+  \item chuỗi lệnh khởi tạo SSD1306, framebuffer, font 5x7 và đồ họa;
+  \item cấu hình thanh ghi, đọc FIFO và xử lý tín hiệu MAX30102;
+  \item đọc thanh ghi IMU và máy trạng thái phát hiện té ngã;
+  \item lọc gia tốc và xác định chuỗi bước đi;
+  \item bộ đệm dòng, checksum, tách trường và đổi tọa độ NMEA;
+  \item bộ lập lịch theo thời gian và cơ chế phát hiện lại thiết bị.
+\end{itemize}
+
+\small
+\noindent\begin{tabularx}{\textwidth}{L{3.6cm} L{3.1cm} Y}
+\toprule
+\textbf{Tệp tiêu đề} & \textbf{Nguồn} & \textbf{Mục đích}\\
+\midrule
+\Code{Arduino.h} & ESP32 Arduino Core & GPIO, thời gian, LEDC và hàm nền tảng\\
+\Code{Wire.h} & ESP32 Arduino Core & Chỉ thực hiện giao tiếp I2C được giảng viên cho phép\\
+\Code{HardwareSerial.h} & ESP32 Arduino Core & Nhận byte UART từ GPS\\
+\Code{math.h} & Thư viện chuẩn C/C++ & Căn bậc hai, trị tuyệt đối\\
+\bottomrule
+\end{tabularx}
+\normalsize
+
+Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư viện MPU hay thư viện xử lý tín hiệu. Vì vậy, việc đổi dữ liệu thô thành BPM, SpO$_2$, bước chân, trạng thái té ngã và tọa độ đều nằm trong mã nguồn của nhóm.
+
+\subsection{Luồng vòng lặp chính}
+
+Ở mỗi vòng lặp, chương trình đọc hết byte GPS đang chờ và rút FIFO PPG. Theo các mốc thời gian riêng, chương trình cập nhật IMU, máy trạng thái té ngã, OLED và nhật ký. Không có trì hoãn dài nên các nguồn dữ liệu tốc độ khác nhau vẫn hoạt động đồng thời.
+
+\subsection{Giao diện hiển thị}
+
+Màn hình chính ưu tiên BPM và SpO$_2$ bằng ký tự cỡ lớn. Các hàng dưới hiển thị hướng dẫn đo, số bước, trạng thái té ngã, GPS, số vệ tinh/gia tốc hoặc tọa độ luân phiên. Khi có té ngã, toàn màn hình chuyển sang cảnh báo khẩn; nếu GPS vừa mất fix, màn hình dùng tọa độ hợp lệ gần nhất và ký hiệu \Code{L-LAT}/\Code{L-LON}. Các số chân đấu nối không xuất hiện trên giao diện người dùng.
+
+\section{Thuật toán các mô-đun}
+
+\subsection{\texorpdfstring{Nhịp tim và SpO$_2$}{Nhịp tim và SpO2}}
+
+MAX30102 cung cấp hai kênh quang RED/IR. Bộ lọc tách DC và AC, sau đó bộ dò đáy có khoảng trơ tạo thời điểm nhịp. BPM được tính từ khoảng RR hợp lệ đầu tiên và các nhịp sau được làm mượt có kiểm tra sai lệch. SpO$_2$ dùng tỷ lệ giữa AC/DC của hai kênh. Cờ hợp lệ ngăn màn hình dùng số khi chưa đủ dữ liệu.
+
+\subsection{Phát hiện té ngã}
+
+Độ lớn gia tốc ba trục được đưa qua chuỗi trạng thái NORMAL, FREEFALL, IMPACT và ALERT. Cảnh báo chỉ sinh ra nếu ba hiện tượng rơi tự do, va đập và ít chuyển động xuất hiện đúng thứ tự trong các cửa sổ thời gian cho phép.
+
+\subsection{Đếm bước}
+
+Thành phần gia tốc chậm được dùng làm đường nền. Chương trình đếm các đỉnh chuyển động có khoảng cách 280--1.800 ms và chỉ bắt đầu cộng khi có hai đỉnh liên tiếp. Số bước được giữ trong RAM cho đến khi thiết bị khởi động lại.
+
+\subsection{GPS}
+
+Parser chỉ chấp nhận câu NMEA có checksum đúng. GGA/RMC được dùng để lấy vị trí, số vệ tinh và trạng thái fix. Hệ thống tách WAIT, LOST, NOFIX và FIX để tránh hiểu nhầm GPS chưa bắt vệ tinh là lỗi dây.
+
+\section{Các đoạn mã quyết định}
+
+Các đoạn dưới đây được trích từ sketch nộp kèm. Chúng thể hiện những điều kiện trực tiếp quyết định đầu ra của hệ thống; mã đầy đủ còn chứa phần khởi tạo, vẽ giao diện và nhật ký kiểm tra.
+
+\subsection{Phân biệt FIFO rỗng với lỗi MAX30102}
+
+\Needspace{0.28\textheight}
+\begin{lstlisting}[style=firmware,caption={Không dùng dữ liệu PPG cũ khi cảm biến mất kết nối}]
+int8_t result = MAX30102_ReadFIFO();
+if (result == FIFO_NO_DATA) break;
+if (result == FIFO_BUS_ERROR) {
+  maxOK = false;
+  PPG_ResetMetrics();
+  ppg.redRaw = ppg.irRaw = 0;
+  break;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Đọc một mẫu từ FIFO MAX30102 và lưu loại kết quả trả về.}
+\CodeExplainLine{2}{Thoát vòng đọc khi FIFO hiện không có mẫu mới; đây không phải lỗi cảm biến.}
+\CodeExplainLine{3}{Đi vào nhánh xử lý riêng khi giao dịch I2C với MAX30102 thất bại.}
+\CodeExplainLine{4}{Đánh dấu cảm biến quang đang mất kết nối để cơ chế phục hồi có thể khởi tạo lại.}
+\CodeExplainLine{5}{Xóa BPM, SpO$_2$ và trạng thái bộ lọc để không giữ số đo của phiên cũ.}
+\CodeExplainLine{6}{Đặt cả hai mẫu quang thô về 0, tránh giao diện hiểu dữ liệu cũ là mẫu mới.}
+\CodeExplainLine{7}{Dừng vòng đọc FIFO ngay sau lỗi bus.}
+\CodeExplainLine{8}{Kết thúc nhánh xử lý lỗi giao tiếp.}
+\end{codeexplanation}
+
+\subsection{Xác nhận BPM trước khi hiển thị}
+
+\Needspace{0.24\textheight}
+\begin{lstlisting}[style=firmware,caption={Khoảng RR hợp lệ đầu tiên tạo BPM ban đầu}]
+if (!ppg.heartRateValid) {
+  ppg.bpm = instantBPM;
+  ppg.heartRateValid = true;
+} else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
+  ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Kiểm tra hệ thống đã có một kết quả BPM hợp lệ trong phiên đo hiện tại hay chưa.}
+\CodeExplainLine{2}{Ở nhịp hợp lệ đầu tiên, dùng trực tiếp BPM tức thời để giao diện hiện kết quả sớm.}
+\CodeExplainLine{3}{Đánh dấu kết quả đã hợp lệ để các nhịp sau chuyển sang chế độ làm mượt.}
+\CodeExplainLine{4}{Chỉ nhận BPM tiếp theo nếu nó lệch không quá 22 BPM so với giá trị đang hiển thị.}
+\CodeExplainLine{5}{Kết hợp 80\% giá trị cũ với 20\% giá trị mới để giảm dao động giữa các nhịp.}
+\CodeExplainLine{6}{Kết thúc nhánh lựa chọn giữa khởi tạo nhanh và cập nhật đã lọc.}
+\end{codeexplanation}
+
+\Needspace{0.42\textheight}
+\subsection{Điều kiện bước chân và té ngã}
+\begin{lstlisting}[style=firmware,caption={Ngưỡng động học dùng cho hai chức năng IMU}]
+if (peakArmed && dynamicFiltered > 0.11f &&
+    now - lastPeakMs > 280 && totalG < 1.8f) {
+  uint32_t interval = lastPeakMs == 0 ? 0 : now - lastPeakMs;
+  if (interval >= 280 && interval <= 1800) {
+    if (walkingSequence) {
+      stepCount++;
+    } else {
+      stepCount += 2;
+      walkingSequence = true;
+    }
+  }
+}
+
+if (now - fallStateMs > 1800 && motionLevel < 0.08f &&
+    accelerationG > 0.72f && accelerationG < 1.28f) {
+  fallState = FALL_ALERT;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Chỉ xét một bước khi đã thấy đáy âm và tín hiệu động vượt ngưỡng dương 0,11 g.}
+\CodeExplainLine{2}{Yêu cầu cách đỉnh trước hơn 280 ms và tổng gia tốc nhỏ hơn 1,8 g để loại rung hoặc va đập.}
+\CodeExplainLine{3}{Tính thời gian giữa hai đỉnh; khi chưa có đỉnh trước thì trả về 0.}
+\CodeExplainLine{4}{Xác nhận chu kỳ nằm trong miền 280--1.800 ms của một nhịp bước hợp lý.}
+\CodeExplainLine{5}{Kiểm tra chuỗi đi bộ đã được xác nhận hay mới bắt đầu.}
+\CodeExplainLine{6}{Nếu chuỗi đang hợp lệ, cộng thêm đúng một bước cho đỉnh mới.}
+\CodeExplainLine{7}{Đi vào nhánh khởi tạo khi vừa có cặp đỉnh hợp lệ đầu tiên.}
+\CodeExplainLine{8}{Cộng hai bước để tính cả đỉnh đầu tiên từng được giữ lại để xác nhận chuỗi.}
+\CodeExplainLine{9}{Đánh dấu các đỉnh tiếp theo thuộc cùng một chuỗi đi bộ.}
+\CodeExplainLine{10}{Kết thúc lựa chọn cách cập nhật bộ đếm bước.}
+\CodeExplainLine{11}{Kết thúc điều kiện chu kỳ bước hợp lệ.}
+\CodeExplainLine{12}{Kết thúc điều kiện xác nhận đỉnh dương.}
+\CodeExplainLine{13}{Dòng trống phân tách thuật toán đếm bước với điều kiện phát cảnh báo té ngã.}
+\CodeExplainLine{14}{Sau va đập, yêu cầu bất động hơn 1.800 ms và mức chuyển động dưới 0,08 g.}
+\CodeExplainLine{15}{Đồng thời yêu cầu tổng gia tốc nằm gần 1 g, từ 0,72 đến 1,28 g.}
+\CodeExplainLine{16}{Chuyển sang trạng thái cảnh báo khi các điều kiện sau va đập đều được thỏa mãn.}
+\CodeExplainLine{17}{Kết thúc điều kiện xác nhận cảnh báo té ngã.}
+\end{codeexplanation}
+
+\Needspace{0.28\textheight}
+\subsection{Loại câu NMEA sai checksum}
+\begin{lstlisting}[style=firmware,caption={Checksum XOR của phần thân câu NMEA}]
+uint8_t checksum = 0;
+for (const char *p = sentence + 1; p < star; p++) {
+  checksum ^= (uint8_t)*p;
+}
+uint8_t expected = (uint8_t)((high << 4) | low);
+return checksum == expected;
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Khởi tạo byte checksum tự tính bằng 0.}
+\CodeExplainLine{2}{Duyệt phần thân NMEA, bắt đầu sau ký tự đô-la và dừng trước dấu sao.}
+\CodeExplainLine{3}{XOR lần lượt từng ký tự để tạo checksum theo chuẩn NMEA 0183.}
+\CodeExplainLine{4}{Kết thúc vòng lặp sau khi đã xử lý hết phần thân câu.}
+\CodeExplainLine{5}{Ghép hai chữ số hexadecimal đã chuyển đổi thành checksum nhận kèm câu.}
+\CodeExplainLine{6}{Trả về đúng khi byte tự tính trùng byte nhận được; câu sai checksum bị loại.}
+\end{codeexplanation}
+
+\section{Phân công thực hiện}
+
+\begin{tabularx}{\textwidth}{L{3.4cm} Y C{2cm}}
+\toprule
+\textbf{Thành viên} & \textbf{Phần việc chính} & \textbf{Tỷ lệ}\\
+\midrule
+Phạm Hùng Tiến & Tích hợp, I2C, SSD1306, giao diện, lịch chạy, cấu hình/nạp và kiểm thử tổng & 33,4\%\\
+Hồ Sĩ Phú & MAX30102, FIFO, xử lý PPG, BPM, SpO$_2$, chất lượng và hiệu chuẩn & 33,3\%\\
+Quách Gia Thịnh & IMU, đếm bước, máy trạng thái té ngã, UART GPS, checksum và parser NMEA & 33,3\%\\
+\bottomrule
+\end{tabularx}
+
+Mỗi thành viên thực hiện 30 giờ. Các phần việc được ghép và kiểm tra chung trên cùng một phiên bản chương trình.
+
+\section{Kiểm thử và kết quả}
+
+\begin{longtable}{L{4.2cm} L{5.8cm} L{3.1cm}}
+\toprule
+\textbf{Phép thử} & \textbf{Kết quả đo/quan sát} & \textbf{Đánh giá}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Phép thử} & \textbf{Kết quả đo/quan sát} & \textbf{Đánh giá}\\
+\midrule
+\endhead
+Quét I2C & Phát hiện 0x3C, 0x57, 0x68 & \OK\\
+Định danh IMU & WHO\_AM\_I = 0x74 & \OK\\
+Gia tốc nghỉ & 1,07--1,08$g$ & \OK\\
+Đếm bước khi đặt yên & Bộ đếm giữ nguyên 0 & \OK\\
+Đếm bước mô phỏng & 20 chu kỳ tổng hợp cho 20 bước; nhiễu nhỏ/rung đơn cho 0 & \OK\\
+Đếm bước khi đi bộ & Chưa có chuỗi đối chứng đủ dài để tính sai số & \NeedTest\\
+MAX30102 rời tay & IR 330--400, kết quả ở WAIT & \OK\\
+MAX30102 đặt tay & IR 132.000--137.000 & \OK\\
+Nhịp tim & BPM quan sát khoảng 72--83 qua các lần thử & \OK\\
+SpO$_2$ nguyên mẫu & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
+Luồng GPS & Hơn 7.000 byte NMEA; không mất UART & \OK\\
+GPS có vị trí & FIX, 4 vệ tinh ở lần chạy cuối, có vĩ/kinh độ & \OK\\
+Buzzer/LEDC & Kênh PWM khởi tạo thành công; chưa đo mức âm thực tế & \Implemented\\
+Té ngã mô phỏng & Chuỗi đầy đủ vào ALERT; chuỗi thiếu va đập về NORMAL & \OK\\
+Té ngã thực tế & Chưa thử ngã người thật; chỉ mới kiểm tra logic và ngưỡng trên mô hình & \NeedTest\\
+Biên dịch & 358.067 byte flash (11\%), RAM 25.732 byte (7\%) & \OK\\
+Nạp phần cứng & Xác minh hash, hard reset thành công & \OK\\
+\bottomrule
+\end{longtable}
+
+Các ca mô phỏng được tái lập bằng tệp \path{tests/algorithm_selfcheck.py}, chỉ dùng thư viện chuẩn Python và giữ nguyên hệ số/ngưỡng của firmware. Chúng chứng minh luồng quyết định chạy nhất quán nhưng không được dùng để thay thế số liệu đi bộ hoặc té ngã trên người thật.
+
+\section{Đánh giá rủi ro và giới hạn}
+
+\begin{itemize}
+  \item SpO$_2$ chưa được hiệu chuẩn bằng thiết bị y tế tham chiếu, vì vậy chỉ mang tính học thuật.
+  \item Chuyển động ngón tay, ánh sáng ngoài và lực ép làm giảm độ tin cậy PPG.
+  \item GPS trong nhà có thể ở NOFIX hoặc số vệ tinh thấp; cần thử ngoài trời.
+  \item Ngưỡng té ngã cần được đánh giá trên nhiều tư thế và đối tượng nhưng phải dùng đệm, dây giữ và quy trình an toàn.
+  \item Nguyên mẫu chưa có quản lý pin, vỏ đeo, động cơ rung, nút hủy cảnh báo và kênh gửi cảnh báo từ xa.
+\end{itemize}
+
+\section{Hướng phát triển}
+
+Nhóm đề xuất bổ sung nút SOS/hủy và động cơ rung; hiệu chuẩn SpO$_2$ bằng tập dữ liệu đối chứng; ghi lịch sử đo; dùng BLE/Wi-Fi/LTE để gửi cảnh báo; tối ưu tiêu thụ điện; thiết kế PCB và vỏ đeo. Đối với té ngã, ngưỡng cố định có thể được thay bằng mô hình thích nghi sau khi có bộ dữ liệu thử nghiệm đủ lớn.
+
+\section{Kết luận}
+
+Mô hình đã đọc được các cảm biến, hiển thị số đo, nhận vị trí GPS và có luồng điều khiển màn hình/loa khi máy trạng thái té ngã được kích hoạt. Qua quá trình thực hiện, nhóm nắm được cách tổ chức dữ liệu từ nhiều thiết bị có tốc độ khác nhau trên ESP32-S3. Trước khi sử dụng thực tế, sản phẩm cần được hiệu chuẩn, thử nghiệm an toàn và hoàn thiện phần nguồn, vỏ đeo và truyền tin.
+
+\section*{Tài liệu tham khảo}
+\addcontentsline{toc}{section}{Tài liệu tham khảo}
+
+\begin{itemize}
+  \item Espressif Systems, \href{https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/hw-reference/index.html}{ESP32-S3 Hardware Reference}.
+  \item Espressif Systems, \href{https://github.com/espressif/arduino-esp32}{Arduino Core for ESP32} và mã nguồn \Code{Wire} đi kèm.
+  \item Analog Devices, \href{https://www.analog.com/media/en/technical-documentation/data-sheets/MAX30102.pdf}{MAX30102 Datasheet, Revision 1}.
+  \item Analog Devices, \href{https://www.analog.com/en/resources/technical-articles/guidelines-for-spo2-measurement--maxim-integrated.html}{hướng dẫn hiệu chuẩn phép đo SpO$_2$}.
+  \item Freenove, \href{https://store.freenove.com/products/fnk0085}{ESP32-S3-WROOM Camera Board, dòng FNK0085}; nguồn ảnh bo điều khiển.
+  \item Waveshare, \href{https://www.waveshare.com/0.96inch-OLED-A.htm}{OLED SSD1306 0,96 inch 128x64} và \href{https://www.waveshare.com/uart-gps-neo-6m.htm}{mô-đun GPS UART NEO-6M}; nguồn ảnh tham chiếu.
+  \item DFRobot, \href{https://wiki.dfrobot.com/sen0344/docs/19237}{Fermion MAX30102 V1.0}; nguồn ảnh bo breakout tham chiếu.
+  \item TDK InvenSense, \href{https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Register-Map.pdf}{MPU-6000/MPU-6050 Register Map, Revision 4.2}; dùng để đối chiếu nhóm thanh ghi gia tốc tương thích.
+  \item Solomon Systech, \href{https://www.solomon-systech.com/product-category/oled-display}{danh mục bộ điều khiển OLED SSD1306 128x64}.
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,262 @@
+\usepackage[a4paper,top=2.1cm,bottom=2.2cm,left=2.6cm,right=2.2cm,headheight=15pt]{geometry}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setmonofont{Menlo}[Scale=0.86]
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.22}
+\usepackage{parskip}
+\setlength{\parindent}{1.1cm}
+\setlength{\parskip}{3pt}
+
+\usepackage{xcolor}
+\definecolor{Primary}{HTML}{12355B}
+\definecolor{Secondary}{HTML}{187795}
+\definecolor{Accent}{HTML}{F4A261}
+\definecolor{SoftBlue}{HTML}{EAF3F7}
+\definecolor{SoftGray}{HTML}{F4F6F8}
+\definecolor{Success}{HTML}{287D52}
+\definecolor{Warning}{HTML}{A65A00}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{needspace}
+\renewcommand{\lstlistingname}{Đoạn mã}
+\renewcommand{\lstlistlistingname}{Danh sách đoạn mã}
+\renewcommand{\contentsname}{MỤC LỤC}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=Primary,urlcolor=Secondary,citecolor=Primary,pdfborder={0 0 0}}
+
+\setlist[itemize]{leftmargin=1.2cm,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.2cm,itemsep=2pt,topsep=3pt}
+\renewcommand{\arraystretch}{1.25}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\titleformat{\section}{\Large\bfseries\color{Primary}}{\thesection.}{0.55em}{}
+\titleformat{\subsection}{\large\bfseries\color{Secondary}}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{Primary}}{\thesubsubsection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{Primary}\textbf{ĐỒ ÁN ESP32-S3}}
+\fancyhead[R]{\small\color{Secondary}\ReportShortTitle}
+\fancyfoot[L]{\small Nhóm 3 thành viên}
+\fancyfoot[R]{\small Trang \thepage/\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\newtcolorbox{summarybox}[1][Tóm tắt]{
+  enhanced, breakable, colback=SoftBlue, colframe=Secondary,
+  title=\textbf{#1}, coltitle=white, colbacktitle=Secondary,
+  boxrule=0.7pt, arc=2mm, left=3mm, right=3mm, top=2mm, bottom=2mm
+}
+\newtcolorbox{evidencebox}[1][Minh chứng]{
+  enhanced, breakable, colback=SoftGray, colframe=Primary,
+  title=\textbf{#1}, coltitle=white, colbacktitle=Primary,
+  boxrule=0.6pt, arc=1.5mm, left=3mm, right=3mm, top=2mm, bottom=2mm
+}
+\newtcolorbox{warningbox}[1][Lưu ý]{
+  enhanced, breakable, colback=Accent!12, colframe=Warning,
+  title=\textbf{#1}, coltitle=white, colbacktitle=Warning,
+  boxrule=0.6pt, arc=1.5mm, left=3mm, right=3mm, top=2mm, bottom=2mm
+}
+
+\lstdefinestyle{firmware}{
+  language=C++,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{Primary}\bfseries,
+  commentstyle=\color{Success},
+  stringstyle=\color{Warning},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=7pt,
+  frame=single,
+  rulecolor=\color{Secondary!65},
+  backgroundcolor=\color{SoftGray},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  xleftmargin=0.8em,
+  framexleftmargin=0.5em,
+  aboveskip=7pt,
+  belowskip=7pt,
+  captionpos=b
+}
+
+% Bảng đặt ngay sau đoạn mã, dùng chung cho phần thuyết minh từng dòng.
+\newenvironment{codeexplanation}{%
+  \par\smallskip
+  \begingroup
+  \small
+  \setlength{\LTleft}{0pt}
+  \setlength{\LTright}{0pt}
+  \renewcommand{\arraystretch}{1.16}
+  \begin{longtable}{C{1.2cm} L{13.7cm}}
+    \multicolumn{2}{l}{\sffamily\bfseries\color{Secondary}Giải thích từng dòng}\tabularnewline[2pt]
+    \toprule
+    \textbf{Dòng} & \textbf{Ý nghĩa trong chương trình}\\
+    \midrule
+    \endfirsthead
+    \multicolumn{2}{l}{\sffamily\bfseries\color{Secondary}Giải thích từng dòng (tiếp theo)}\tabularnewline[2pt]
+    \toprule
+    \textbf{Dòng} & \textbf{Ý nghĩa trong chương trình}\\
+    \midrule
+    \endhead
+    \midrule
+    \multicolumn{2}{r}{\footnotesize\itshape Còn tiếp ở trang sau}\tabularnewline
+    \endfoot
+    \bottomrule
+    \endlastfoot
+}{%
+  \end{longtable}
+  \endgroup
+  \par\smallskip
+}
+\newcommand{\CodeExplainLine}[2]{#1 & #2\\}
+
+\newcommand{\ProjectTitle}{THIẾT BỊ ĐEO THEO DÕI SỨC KHỎE, PHÁT HIỆN TÉ NGÃ VÀ ĐỊNH VỊ DÙNG ESP32-S3}
+\newcommand{\GroupMembers}{Phạm Hùng Tiến -- Hồ Sĩ Phú -- Quách Gia Thịnh}
+\newcommand{\ReportDate}{Tháng 8 năm 2026}
+\newcommand{\UniversityName}{TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN}
+\newcommand{\UniversitySystem}{ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}
+\newcommand{\FacultyName}{KHOA ĐIỆN TỬ -- VIỄN THÔNG}
+
+\newcommand{\CoverInstitution}{%
+  \centering
+  \includegraphics[height=2.8cm]{assets/branding/hcmus_logo_user.png}\par
+  \vspace{0.2cm}
+  {\sffamily\bfseries\small\color{Primary}\UniversitySystem\par}
+  \vspace{2pt}
+  {\sffamily\bfseries\fontsize{16}{20}\selectfont\color{Primary}\UniversityName\par}
+  \vspace{3pt}
+  {\sffamily\bfseries\large\color{Secondary}\FacultyName\par}
+  \vspace{0.35cm}
+  {\color{Primary}\rule{0.84\textwidth}{1.0pt}\par}
+}
+
+\newcommand{\CoverBands}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \fill[Primary] (current page.north west) rectangle ([yshift=-4.5mm]current page.north east);
+    \fill[Secondary] (current page.south west) rectangle ([yshift=3mm]current page.south east);
+  \end{tikzpicture}%
+}
+
+\newcommand{\CoverField}[2]{%
+  \noindent
+  \begin{minipage}[t]{0.35\linewidth}
+    \raggedright\strut\sffamily\bfseries\color{Primary}#1
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.61\linewidth}
+    \raggedright\strut\sffamily\color{black}#2
+  \end{minipage}\par
+}
+
+\hypersetup{
+  pdftitle={\ProjectTitle\space -- \ReportShortTitle},
+  pdfauthor={\GroupMembers},
+  pdfsubject={Báo cáo đồ án thiết bị theo dõi sức khỏe dùng ESP32-S3},
+  pdfkeywords={ESP32-S3, MAX30102, OLED, IMU, GPS, nhịp tim, SpO2, té ngã}
+}
+
+\newcommand{\MakeReportCover}[4]{%
+  \hypersetup{pageanchor=false}
+  \begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \CoverBands
+    \vspace*{0.05cm}
+    \CoverInstitution
+    \vspace{0.45cm}
+    {\sffamily\bfseries\normalsize\color{Secondary} BÁO CÁO ĐỒ ÁN\par}
+    \vspace{0.35cm}
+    {\sffamily\bfseries\fontsize{18}{23}\selectfont\color{Primary}\ProjectTitle\par}
+    \vspace{0.6cm}
+    \begin{tcolorbox}[width=0.84\textwidth,colback=SoftBlue,colframe=Secondary,arc=1.8mm,boxrule=0.8pt,left=4mm,right=4mm,top=2.7mm,bottom=2.7mm]
+      \centering{\sffamily\bfseries\normalsize\color{Secondary} #1\par}
+    \end{tcolorbox}
+    \vfill
+    \begin{tcolorbox}[width=0.84\textwidth,colback=white,colframe=Primary!48,arc=1.2mm,boxrule=0.6pt,left=6mm,right=6mm,top=4.5mm,bottom=4.5mm]
+      \raggedright
+      \CoverField{Người thực hiện}{#2}
+      \vspace{2.1mm}
+      \CoverField{Mã số sinh viên}{#3}
+      \vspace{2.1mm}
+      \CoverField{Nhóm}{03 thành viên}
+      \vspace{2.1mm}
+      \CoverField{Phạm vi báo cáo}{#4}
+    \end{tcolorbox}
+    \vfill
+    {\sffamily\footnotesize\color{Secondary}\GroupMembers\par}
+    \vspace{0.25cm}
+    {\sffamily\bfseries\small\color{Primary}Thành phố Hồ Chí Minh, \ReportDate\par}
+    \vspace{0.2cm}
+  \end{titlepage}
+  \hypersetup{pageanchor=true}
+  \clearpage
+}
+
+\newcommand{\MakeGroupCover}[1]{%
+  \hypersetup{pageanchor=false}
+    \begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \CoverBands
+    \vspace*{0.05cm}
+    \CoverInstitution
+    \vspace{0.45cm}
+    {\sffamily\bfseries\normalsize\color{Secondary} BÁO CÁO ĐỒ ÁN\par}
+    \vspace{0.35cm}
+    {\sffamily\bfseries\fontsize{18}{23}\selectfont\color{Primary}\ProjectTitle\par}
+    \vspace{0.6cm}
+    \begin{tcolorbox}[width=0.84\textwidth,colback=SoftBlue,colframe=Secondary,arc=1.8mm,boxrule=0.8pt,left=4mm,right=4mm,top=2.7mm,bottom=2.7mm]
+      \centering{\sffamily\bfseries\normalsize\color{Secondary} #1\par}
+    \end{tcolorbox}
+    \vfill
+    \begin{tcolorbox}[width=0.84\textwidth,colback=white,colframe=Primary!48,arc=1.2mm,boxrule=0.6pt,left=6mm,right=6mm,top=4.5mm,bottom=4.5mm]
+      \sffamily
+      {\bfseries\color{Primary}THÀNH VIÊN THỰC HIỆN\par}
+      \vspace{3mm}
+      \begin{tabularx}{\linewidth}{C{1.1cm} Y C{3.0cm}}
+        \toprule
+        \textbf{STT} & \textbf{Họ và tên} & \textbf{MSSV}\\
+        \midrule
+        1 & Phạm Hùng Tiến & 24207043\\
+        2 & Hồ Sĩ Phú & 24207101\\
+        3 & Quách Gia Thịnh & 24207105\\
+        \bottomrule
+      \end{tabularx}
+    \end{tcolorbox}
+    \vfill
+    {\sffamily\bfseries\small\color{Primary}Thành phố Hồ Chí Minh, \ReportDate\par}
+    \vspace{0.2cm}
+  \end{titlepage}
+  \hypersetup{pageanchor=true}
+  \clearpage
+}
+
+\newcommand{\Code}[1]{\texttt{#1}}
+\newcommand{\OK}{\textcolor{Success}{\textbf{Đạt}}}
+\newcommand{\Implemented}{\textcolor{Secondary}{\textbf{Đã cài đặt}}}
+\newcommand{\NeedTest}{\textcolor{Warning}{\textbf{Cần thử thêm}}}
+\newcommand{\Pending}{\textcolor{Warning}{\textbf{Cần hiệu chuẩn}}}

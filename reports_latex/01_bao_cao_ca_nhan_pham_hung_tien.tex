@@ -1,0 +1,209 @@
+\documentclass[12pt]{article}
+\newcommand{\ReportShortTitle}{Cá nhân -- Phạm Hùng Tiến}
+\input{common/preamble}
+
+\begin{document}
+\MakeReportCover{BÁO CÁO CÔNG VIỆC CÁ NHÂN}{Phạm Hùng Tiến}{24207043}{Tích hợp hệ thống, giao tiếp I2C, hiển thị và quy trình nạp}
+
+\begin{summarybox}[Nội dung phụ trách]
+Trong đồ án, em phụ trách cấu hình ESP32-S3 N16R8, giao tiếp I2C, điều khiển OLED SSD1306, bố trí lịch chạy các cảm biến và kiểm tra hoạt động chung của thiết bị.
+\end{summarybox}
+
+\section{Mục tiêu công việc}
+
+Mục tiêu của phần việc là bảo đảm các cảm biến, GPS và màn hình có thể chạy đồng thời trên ESP32-S3. Chương trình cần đọc dữ liệu liên tục, cập nhật màn hình đúng chu kỳ và vẫn giữ được kết nối khi một mô-đun được cắm lại.
+
+\section{Công việc đã thực hiện}
+
+\subsection{Thiết kế cấu hình phần cứng}
+
+Em sử dụng cấu hình bo \textbf{ESP32-S3 N16R8}, flash 16 MB, PSRAM 8 MB và chế độ USB CDC khi khởi động. Bus I2C dùng GPIO8 làm SDA và GPIO9 làm SCL. Khi quét bus, chương trình nhận được OLED tại 0x3C, MAX30102 tại 0x57 và IMU tại 0x68. Cụm camera được tách khỏi bus vì các chân 8--9 trùng với tín hiệu camera của bo.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.92\linewidth,height=4.7cm,keepaspectratio]{assets/components/esp32s3_freenove.jpg}
+    \\[2pt]\small (a) Bo Freenove ESP32-S3-WROOM N16R8.
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=0.92\linewidth,height=4.7cm,keepaspectratio,trim=110 30 110 30,clip]{assets/components/oled_ssd1306.jpg}
+    \\[2pt]\small (b) Màn hình OLED SSD1306 0,96 inch tham chiếu.
+  \end{minipage}
+  \caption{Hai linh kiện thuộc phạm vi tích hợp và hiển thị. Nguồn ảnh: \href{https://store.freenove.com/products/fnk0085}{Freenove} và \href{https://www.waveshare.com/0.96inch-OLED-A.htm}{Waveshare}.}
+  \label{fig:tien-hardware}
+\end{figure}
+
+\subsection{Giao tiếp I2C}
+
+Em viết các thao tác đọc/ghi thanh ghi dựa trên \Code{Wire} có sẵn trong ESP32 Arduino Core, gồm phát START, gửi địa chỉ, ghi thanh ghi, repeated START và đọc nhiều byte. Giá trị trả về được dùng để nhận biết NACK hoặc thiếu dữ liệu. Chương trình thử kết nối lại sau mỗi hai giây nếu một thiết bị I2C bị rút ra.
+
+Đoạn mã dưới đây là thao tác đọc một thanh ghi. Giá trị \Code{false} được truyền lên lớp gọi để mô-đun không tiếp tục sử dụng dữ liệu cũ khi bus báo lỗi.
+
+\Needspace{0.26\textheight}
+\begin{lstlisting}[style=firmware,caption={Đọc thanh ghi I2C và kiểm tra lỗi truyền}]
+bool I2C_ReadRegister(uint8_t address, uint8_t reg, uint8_t &value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(address, (uint8_t)1) != 1) return false;
+  value = Wire.read();
+  return true;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Khai báo hàm đọc một thanh ghi; địa chỉ thiết bị và địa chỉ thanh ghi là đầu vào, còn byte đọc được trả qua biến tham chiếu.}
+\CodeExplainLine{2}{Bắt đầu một giao dịch I2C với thiết bị có địa chỉ đã truyền vào.}
+\CodeExplainLine{3}{Gửi địa chỉ thanh ghi cần đọc vào bộ đệm truyền của bus.}
+\CodeExplainLine{4}{Phát repeated START thay vì STOP; nếu thiết bị trả NACK thì kết thúc hàm với trạng thái lỗi.}
+\CodeExplainLine{5}{Yêu cầu đúng một byte từ thiết bị; số byte nhận khác một được xem là lỗi truyền.}
+\CodeExplainLine{6}{Lấy byte đang chờ trong bộ đệm I2C và ghi vào biến kết quả.}
+\CodeExplainLine{7}{Xác nhận toàn bộ thao tác đọc đã hoàn tất thành công.}
+\CodeExplainLine{8}{Kết thúc thân hàm.}
+\end{codeexplanation}
+
+\subsection{Driver OLED và giao diện}
+
+Phần điều khiển SSD1306 sử dụng vùng đệm 1.024 byte và các lệnh ghi trực tiếp qua I2C. Em xây dựng font 5x7 cùng các hàm vẽ điểm, chữ, đường thẳng, khung và biểu tượng tim. Màn hình hai màu được bố trí để 16 hàng màu vàng làm thanh trạng thái, còn 48 hàng màu xanh hiển thị các số đo. Giao diện gồm ba vùng:
+
+\begin{itemize}
+  \item tiêu đề và trạng thái GPS ở đầu màn hình;
+  \item BPM và SpO$_2$ cỡ lớn ở trung tâm;
+  \item hướng dẫn đo, số bước, trạng thái té ngã, GPS và tọa độ ở cuối màn hình.
+\end{itemize}
+
+Khi có cảnh báo té ngã, màn hình chuyển sang khung cảnh báo riêng, hiện vị trí luân phiên và hướng dẫn hủy cảnh báo. Giao diện không hiển thị số chân đấu dây, nhờ đó thông tin sức khỏe dễ đọc hơn.
+
+Em bổ sung đầu nối piezo hai dây: SPK+ tại GPIO42 và SPK- tại GND. Phần mềm điều khiển PWM LEDC tạo một tiếng ngắn khi khởi động và hai âm xen kẽ khi trạng thái té ngã chuyển sang ALERT. Nếu dùng loa trở kháng thấp thay cho piezo chủ động/thụ động phù hợp, mạch cần thêm transistor khuếch đại.
+
+Framebuffer được truyền ở 400 kHz rồi bus trở lại 100 kHz cho cảm biến. Mỗi giao dịch đều được kiểm tra; nếu OLED không phản hồi, cờ \Code{oledOK} bị xóa và vòng lặp sẽ thử khởi tạo lại sau hai giây.
+
+\Needspace{0.38\textheight}
+\begin{lstlisting}[style=firmware,caption={Truyền framebuffer và trả bus về tốc độ cảm biến}]
+bool OLED_Update() {
+  if (!oledOK) return false;
+  Wire.setClock(I2C_DISPLAY_HZ);
+  bool success = OLED_WriteCommand(0x21) && OLED_WriteCommand(0) &&
+                 OLED_WriteCommand(127) && OLED_WriteCommand(0x22) &&
+                 OLED_WriteCommand(0) && OLED_WriteCommand(7);
+  for (int i = 0; success && i < 1024; i += 16) {
+    Wire.beginTransmission(OLED_ADDR);
+    Wire.write(0x40);
+    for (int j = 0; j < 16; j++) Wire.write(oledBuffer[i + j]);
+    success = Wire.endTransmission() == 0;
+  }
+  Wire.setClock(I2C_SENSOR_HZ);
+  return success;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Khai báo hàm đẩy framebuffer hiện tại lên OLED và trả về trạng thái truyền.}
+\CodeExplainLine{2}{Không truy cập bus khi OLED chưa được khởi tạo hoặc đã bị đánh dấu mất kết nối.}
+\CodeExplainLine{3}{Nâng tần số I2C lên mức dành cho màn hình để rút ngắn thời gian làm mới.}
+\CodeExplainLine{4}{Gửi lệnh chọn phạm vi cột và bắt đầu chuỗi kiểm tra thành công.}
+\CodeExplainLine{5}{Đặt cột cuối là 127 rồi chuyển sang lệnh chọn phạm vi trang.}
+\CodeExplainLine{6}{Chọn các trang từ 0 đến 7, tương ứng toàn bộ vùng 128 x 64 pixel.}
+\CodeExplainLine{7}{Chia framebuffer 1.024 byte thành từng gói 16 byte; vòng lặp dừng ngay khi có lỗi.}
+\CodeExplainLine{8}{Mở một giao dịch mới tới địa chỉ I2C của SSD1306.}
+\CodeExplainLine{9}{Gửi byte điều khiển 0x40 để báo các byte tiếp theo là dữ liệu ảnh.}
+\CodeExplainLine{10}{Chép 16 byte liên tiếp từ framebuffer vào bộ đệm truyền I2C.}
+\CodeExplainLine{11}{Phát dữ liệu và lưu kết quả ACK; mã trả về khác 0 làm biến trạng thái thành sai.}
+\CodeExplainLine{12}{Kết thúc vòng lặp truyền từng gói.}
+\CodeExplainLine{13}{Hạ bus về tần số dành cho các cảm biến sau khi cập nhật màn hình.}
+\CodeExplainLine{14}{Trả kết quả để lớp gọi quyết định tiếp tục dùng hay khởi tạo lại OLED.}
+\CodeExplainLine{15}{Kết thúc thân hàm.}
+\end{codeexplanation}
+
+\subsection{Lịch chạy và tích hợp}
+
+Vòng lặp chính dùng mốc \Code{millis()} thay cho trì hoãn dài. GPS được đọc liên tục; FIFO PPG được rút thường xuyên; IMU, OLED và nhật ký nối tiếp chạy ở các chu kỳ riêng. Cách tổ chức này giữ được tốc độ lấy mẫu PPG 100 Hz và tránh mất câu NMEA trong lúc cập nhật màn hình.
+
+\Needspace{0.38\textheight}
+\begin{lstlisting}[style=firmware,caption={Các tác vụ có chu kỳ độc lập trong vòng lặp chính}]
+GPS_Poll();
+Buzzer_Update();
+
+if (millis() - lastIMUMs >= IMU_PERIOD_MS) {
+  lastIMUMs = millis();
+  if (imuOK) {
+    if (IMU_ReadAccel(ax, ay, az)) Fall_Process(ax, ay, az);
+    else imuOK = false;
+  }
+}
+if (millis() - lastDisplayMs >= DISPLAY_PERIOD_MS) {
+  lastDisplayMs = millis();
+  OLED_RenderStatus();
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Đọc toàn bộ byte GPS đang chờ để tránh tràn bộ đệm UART và mất câu NMEA.}
+\CodeExplainLine{2}{Cập nhật trạng thái phát âm mà không chặn các tác vụ còn lại.}
+\CodeExplainLine{3}{Dòng trống phân tách hai tác vụ chạy liên tục với nhóm tác vụ chạy theo chu kỳ.}
+\CodeExplainLine{4}{Chỉ xử lý IMU khi khoảng thời gian lấy mẫu quy định đã trôi qua.}
+\CodeExplainLine{5}{Ghi lại mốc thời gian của lần xử lý IMU hiện tại.}
+\CodeExplainLine{6}{Chỉ đọc gia tốc khi mô-đun IMU đang ở trạng thái hoạt động.}
+\CodeExplainLine{7}{Nếu đọc được ba trục gia tốc thì chuyển mẫu sang thuật toán phát hiện té ngã.}
+\CodeExplainLine{8}{Đánh dấu IMU mất kết nối khi thao tác đọc thất bại để tránh dùng dữ liệu cũ.}
+\CodeExplainLine{9}{Kết thúc nhánh kiểm tra trạng thái IMU.}
+\CodeExplainLine{10}{Kết thúc khối tác vụ IMU theo chu kỳ.}
+\CodeExplainLine{11}{Kiểm tra đã đến thời điểm làm mới màn hình hay chưa.}
+\CodeExplainLine{12}{Cập nhật mốc thời gian của lần hiển thị hiện tại.}
+\CodeExplainLine{13}{Dựng nội dung trạng thái mới vào framebuffer và truyền lên OLED.}
+\CodeExplainLine{14}{Kết thúc khối cập nhật màn hình.}
+\end{codeexplanation}
+
+\subsection{Khắc phục lỗi biên dịch và nạp}
+
+Em cấu hình \Code{USBMode=hwcdc}, \Code{CDCOnBoot=cdc}, flash 16 MB và OPI PSRAM cho đúng phiên bản bo. Sau mỗi lần reset, cổng USB mới được kiểm tra lại trước khi nạp. Phiên bản cuối sử dụng 358.067 byte flash (11\%) và 25.732 byte RAM toàn cục (7\%).
+
+\section{Nhật ký khối lượng}
+
+\begin{tabularx}{\textwidth}{L{7.5cm} C{2.2cm} Y}
+\toprule
+\textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
+\midrule
+Sơ đồ tích hợp, chân và cấu hình bo & 4 giờ & Bảng chân, cấu hình N16R8\\
+Hàm I2C và quét thiết bị & 5 giờ & Đọc/ghi thanh ghi, phát hiện 0x3C/0x57/0x68\\
+Driver SSD1306, font và đồ họa & 8 giờ & Framebuffer và bộ hàm hiển thị\\
+Thiết kế giao diện và cảnh báo & 5 giờ & Màn hình sức khỏe, màn hình té ngã\\
+Lịch chạy, phục hồi và tích hợp & 5 giờ & Vòng lặp không chặn\\
+Biên dịch, nạp và kiểm thử tổng & 3 giờ & Firmware chạy trên phần cứng\\
+\midrule
+\textbf{Tổng} & \textbf{30 giờ} & \textbf{Hoàn thành}\\
+\bottomrule
+\end{tabularx}
+
+\section{Kết quả kiểm tra}
+
+\begin{evidencebox}[Kết quả ghi nhận]
+\begin{itemize}
+  \item ESP32-S3 được nhận đúng revision 0.2, flash 16 MB và PSRAM 8 MB.
+  \item Quét bus trả về đủ ba địa chỉ 0x3C, 0x57, 0x68.
+  \item Nhật ký khởi động báo \Code{OLED=OK}, \Code{IMU=OK}, \Code{MAX30102=OK} và \Code{BUZZER=OK}. Mục cuối xác nhận kênh LEDC được gắn thành công; âm lượng cần kiểm tra trực tiếp theo loại loa.
+  \item GPS được tích hợp vào giao diện; lần chạy cuối báo FIX, 4 vệ tinh và tọa độ hợp lệ.
+  \item Firmware nạp thành công qua USB-Serial/JTAG và tự khởi động sau hard reset.
+\end{itemize}
+\end{evidencebox}
+
+\section{Vấn đề và cách xử lý}
+
+\begin{tabularx}{\textwidth}{Y Y}
+\toprule
+\textbf{Vấn đề} & \textbf{Cách xử lý}\\
+\midrule
+Không thấy cổng hoặc nạp thất bại & Chọn đúng ESP32-S3, dùng USB native, giảm tốc độ nạp còn 115200 và xác nhận lại cổng sau reset.\\
+Màn hình không hiện dữ liệu & Quét địa chỉ, kiểm tra SDA/SCL, khởi tạo lại SSD1306 và chỉ cập nhật khi truyền I2C thành công.\\
+Giao diện quá nhiều chữ & Ưu tiên hai số sức khỏe, dùng phân vùng và luân phiên tọa độ.\\
+Nhiều mô-đun làm chậm vòng lặp & Chuyển sang lịch không chặn và đọc FIFO/GPS ở mọi vòng lặp.\\
+\bottomrule
+\end{tabularx}
+
+\section{Kết quả và hạn chế}
+
+Phần tích hợp đã biên dịch, nạp và chạy trên bo thật; ba thiết bị I2C được nhận ổn định và GPS tiếp tục nhận dữ liệu khi OLED cập nhật. Hệ thống hiện mới được thử nghiệm bằng nguồn USB. Các bước tiếp theo là kiểm tra thời gian hoạt động bằng pin và hoàn thiện vỏ đeo.
+
+\end{document}

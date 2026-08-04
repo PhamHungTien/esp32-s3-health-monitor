@@ -1,0 +1,249 @@
+\documentclass[12pt]{article}
+\newcommand{\ReportShortTitle}{Cá nhân -- Hồ Sĩ Phú}
+\input{common/preamble}
+
+\begin{document}
+\MakeReportCover{BÁO CÁO CÔNG VIỆC CÁ NHÂN}{Hồ Sĩ Phú}{24207101}{Đo nhịp tim và ước lượng SpO$_2$ bằng MAX30102}
+
+\begin{summarybox}[Nội dung phụ trách]
+Trong đồ án, em phụ trách cảm biến MAX30102: cấu hình thanh ghi, đọc FIFO, xử lý tín hiệu RED/IR, phát hiện ngón tay, tính nhịp tim và ước lượng SpO$_2$.
+\end{summarybox}
+
+\section{Mục tiêu công việc}
+
+Phần xử lý cần chuyển dữ liệu RED/IR thành BPM và SpO$_2$, đồng thời nhận biết trường hợp chưa đặt ngón tay hoặc tín hiệu chưa ổn định. Giá trị chỉ được hiển thị khi thỏa các điều kiện về biên độ và khoảng nhịp.
+
+\section{Công việc đã thực hiện}
+
+\subsection{Cấu hình và thu FIFO}
+
+Em cấu hình MAX30102 bằng các thanh ghi điều khiển: reset, con trỏ FIFO, chế độ SpO$_2$, độ phân giải ADC, tốc độ lấy mẫu 100 mẫu/giây và dòng LED. Mỗi phần tử FIFO gồm ba byte RED và ba byte IR, được ghép thành số 18 bit. Số mẫu chờ được xác định từ hai con trỏ ghi/đọc để tránh mất dữ liệu.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth,height=5.0cm,keepaspectratio]{assets/components/max30102_board_overview.jpg}
+  \caption{Mô-đun tham chiếu dùng MAX30102 với các chân VCC, GND, SCL, SDA và INT. Bo thực tế của nhóm được xác nhận bằng địa chỉ I2C 0x57; hình dạng PCB có thể khác. Nguồn ảnh: \href{https://wiki.dfrobot.com/sen0344/docs/19237}{DFRobot}.}
+  \label{fig:phu-max30102}
+\end{figure}
+
+\begin{center}
+\small
+\begin{tabularx}{0.94\textwidth}{C{2.0cm} C{2.0cm} Y}
+\toprule
+\textbf{Thanh ghi} & \textbf{Giá trị} & \textbf{Chức năng trong chương trình}\\
+\midrule
+0x09 & 0x40/0x03 & Reset, sau đó chạy chế độ RED--IR\\
+0x04--0x06 & 0x00 & Xóa con trỏ ghi, tràn và đọc FIFO\\
+0x08 & 0x1F & Cho phép FIFO quay vòng, không lấy trung bình trong chip\\
+0x0A & 0x27 & Thang ADC 4.096 nA, 100 mẫu/giây, xung 411 $\mu$s\\
+0x0C/0x0D & 0x24 & Dòng LED đỏ và hồng ngoại khoảng 7,2 mA\\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{center}
+
+Mỗi mẫu được gắn thời điểm tăng 10 ms. Thời gian mẫu do đó không phụ thuộc vào thời gian vẽ OLED hay in Serial, giúp khoảng RR được tính nhất quán.
+
+\subsection{Phát hiện ngón tay và tiền xử lý}
+
+Giá trị IR nền khi không đặt tay đo được khoảng 330--400, trong khi đặt tay đạt khoảng 132.000--137.000. Em dùng hai ngưỡng nhận/nhả để trạng thái ngón tay không thay đổi liên tục. Khi rời tay, bộ đếm nhịp, cửa sổ AC/DC và các giá trị đo được xóa.
+
+Thành phần DC được ước lượng bằng bộ lọc IIR chậm. Thành phần AC là hiệu giữa mẫu và DC; nó tiếp tục được làm mượt để giảm nhiễu cao tần. Tín hiệu sử dụng số thực đơn và không cần thư viện xử lý tín hiệu bên ngoài.
+
+\Needspace{0.38\textheight}
+\begin{lstlisting}[style=firmware,caption={Ngưỡng trễ nhận ngón tay và xóa trạng thái khi rời tay}]
+bool hasFinger = ppg.fingerPresent ?
+                   (irValue > 7000) : (irValue > 10000);
+if (!hasFinger) {
+  if (ppg.fingerPresent) PPG_ResetMetrics();
+  state.dcRed = redValue;
+  state.dcIr = irValue;
+  return;
+}
+
+if (!ppg.fingerPresent) {
+  ppg.fingerPresent = true;
+  state.fingerStartMs = sampleTimeMs;
+  state.dcRed = redValue;
+  state.dcIr = irValue;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Chọn ngưỡng IR theo trạng thái trước đó để tạo vùng trễ khi nhận hoặc bỏ ngón tay.}
+\CodeExplainLine{2}{Khi đã nhận ngón tay dùng ngưỡng 7.000; khi chưa nhận dùng ngưỡng 10.000 để chống dao động.}
+\CodeExplainLine{3}{Đi vào nhánh xử lý khi mẫu hiện tại không còn đủ điều kiện có ngón tay.}
+\CodeExplainLine{4}{Nếu vừa chuyển từ có sang không có ngón tay thì xóa các kết quả đo của phiên trước.}
+\CodeExplainLine{5}{Đặt mức nền kênh đỏ bằng mẫu hiện tại để bộ lọc khởi động lại đúng mức tín hiệu.}
+\CodeExplainLine{6}{Đặt mức nền kênh hồng ngoại theo cùng nguyên tắc.}
+\CodeExplainLine{7}{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO$_2$ khi chưa có ngón tay.}
+\CodeExplainLine{8}{Kết thúc nhánh không có ngón tay.}
+\CodeExplainLine{9}{Dòng trống tách phần loại bỏ mẫu với phần khởi tạo một phiên đo mới.}
+\CodeExplainLine{10}{Kiểm tra đây có phải mẫu hợp lệ đầu tiên sau khi đặt ngón tay hay không.}
+\CodeExplainLine{11}{Ghi nhận cảm biến đang có ngón tay.}
+\CodeExplainLine{12}{Lưu thời điểm bắt đầu phiên đo để các bước sau biết tuổi của tín hiệu.}
+\CodeExplainLine{13}{Khởi tạo mức nền kênh đỏ bằng mẫu đầu tiên của phiên đo.}
+\CodeExplainLine{14}{Khởi tạo mức nền kênh hồng ngoại bằng mẫu đầu tiên của phiên đo.}
+\CodeExplainLine{15}{Kết thúc khối khởi tạo phiên đo.}
+\end{codeexplanation}
+
+\subsection{Thuật toán nhịp tim}
+
+Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,8 giây đầu, bộ lọc bám nhanh theo mức DC để loại xung lớn khi vừa đặt tay. Sau đó, đáy cục bộ vượt ngưỡng thích nghi được dùng làm mốc nhịp; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
+
+\[
+  \mathrm{BPM}=\frac{60\,000}{\Delta t_{\mathrm{ms}}}.
+\]
+
+Chỉ các giá trị trong miền sinh lý được đưa vào bộ làm mượt. Chương trình bỏ 0,8 giây đầu để đường nền ổn định; khoảng RR hợp lệ đầu tiên sau đó được hiển thị ngay. Các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Trong điều kiện đặt tay tốt, kết quả thường xuất hiện sau khoảng 2--3 giây.
+
+\subsection{\texorpdfstring{Ước lượng SpO$_2$}{Ước lượng SpO2}}
+
+Trong mỗi cửa sổ, em tính thành phần DC và độ mạnh AC của hai kênh. Tỷ số chuẩn hóa được xác định bởi:
+
+\[
+ R=\frac{AC_{RED}/DC_{RED}}{AC_{IR}/DC_{IR}},
+ \qquad SpO_2\approx a-bR.
+\]
+
+Kết quả được chặn trong miền hợp lệ, làm mượt giữa các cửa sổ và chỉ công nhận khi biên độ AC đủ lớn, DC khác 0 và tỷ số nằm trong vùng hợp lý. Chỉ số chất lượng $Q$ được giữ trong nhật ký Serial để hỗ trợ kiểm tra; màn hình người dùng không hiện nhãn TỐT/VỪA/YẾU.
+
+\Needspace{0.22\textheight}
+\begin{warningbox}[Giới hạn đo SpO$_2$]
+Giá trị SpO$_2$ hiện là ước lượng phục vụ đồ án, chưa phải thiết bị y tế. Các lần thử gần nhất cho kết quả khoảng 90--96\%; cần thu cặp dữ liệu với máy đo chuẩn, khớp lại hệ số $a,b$ và kiểm tra trên nhiều người trước khi kết luận độ chính xác.
+\end{warningbox}
+
+\Needspace{0.48\textheight}
+\section{Các đoạn mã quyết định}
+
+\subsection{Xác nhận nhịp và khởi tạo BPM}
+
+Bộ dò sử dụng đáy cục bộ, ngưỡng theo biên độ tín hiệu và khoảng trơ 450 ms. Khoảng RR hợp lệ đầu tiên được xuất ngay; các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
+
+\Needspace{0.42\textheight}
+\begin{lstlisting}[style=firmware,caption={Điều kiện phát hiện nhịp và hiển thị BPM sớm}]
+float slope = state.filtered - state.previousFiltered;
+float peakThreshold = state.envelope * 0.95f;
+if (peakThreshold < 100.0f) peakThreshold = 100.0f;
+
+if (state.previousSlope < 0.0f && slope >= 0.0f &&
+    state.previousFiltered < -peakThreshold &&
+    now - ppg.lastBeatMs > 450) {
+  if (ppg.lastBeatMs != 0) {
+    uint32_t interval = now - ppg.lastBeatMs;
+    if (interval >= 480 && interval <= 1500) {
+      float instantBPM = 60000.0f / interval;
+      if (!ppg.heartRateValid) {
+        ppg.bpm = instantBPM;
+        ppg.heartRateValid = true;
+      } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
+        ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
+      }
+    }
+  }
+  ppg.lastBeatMs = now;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Tính độ dốc của tín hiệu đã lọc so với mẫu ngay trước đó.}
+\CodeExplainLine{2}{Đặt ngưỡng đỉnh bằng 95\% biên độ bao hiện tại để ngưỡng tự thích nghi với cường độ tín hiệu.}
+\CodeExplainLine{3}{Giới hạn ngưỡng tối thiểu ở 100 để nhiễu nhỏ không bị nhận nhầm thành nhịp.}
+\CodeExplainLine{4}{Dòng trống phân tách bước chuẩn bị ngưỡng với bước xác nhận đỉnh.}
+\CodeExplainLine{5}{Phát hiện thời điểm độ dốc đổi từ âm sang không âm, tức một cực tiểu của dạng sóng đã đảo.}
+\CodeExplainLine{6}{Yêu cầu biên độ cực tiểu vượt ngưỡng thích nghi vừa tính.}
+\CodeExplainLine{7}{Buộc hai nhịp cách nhau hơn 450 ms để loại bỏ đỉnh giả quá gần.}
+\CodeExplainLine{8}{Chỉ tính khoảng RR khi hệ thống đã lưu được thời điểm của một nhịp trước.}
+\CodeExplainLine{9}{Tính khoảng thời gian giữa hai nhịp liên tiếp theo mili giây.}
+\CodeExplainLine{10}{Chỉ chấp nhận khoảng RR từ 480 đến 1.500 ms, tương ứng vùng nhịp hợp lý của nguyên mẫu.}
+\CodeExplainLine{11}{Đổi khoảng RR sang nhịp mỗi phút bằng công thức 60.000 chia cho số mili giây.}
+\CodeExplainLine{12}{Kiểm tra đây có phải giá trị BPM hợp lệ đầu tiên của phiên đo hay không.}
+\CodeExplainLine{13}{Hiển thị trực tiếp BPM tức thời ở nhịp hợp lệ đầu tiên.}
+\CodeExplainLine{14}{Đánh dấu BPM đã sẵn sàng để giao diện không tiếp tục hiện dấu chờ.}
+\CodeExplainLine{15}{Với các nhịp sau, chỉ nhận giá trị mới nếu chênh lệch không quá 22 BPM.}
+\CodeExplainLine{16}{Làm mượt bằng 80\% giá trị cũ và 20\% giá trị mới để giảm rung số.}
+\CodeExplainLine{17}{Kết thúc nhánh cập nhật BPM sau khi đã có kết quả trước đó.}
+\CodeExplainLine{18}{Kết thúc khối kiểm tra khoảng RR hợp lệ.}
+\CodeExplainLine{19}{Kết thúc khối yêu cầu phải có nhịp trước.}
+\CodeExplainLine{20}{Lưu thời điểm đỉnh hiện tại; đỉnh này sẽ làm mốc cho lần tính RR tiếp theo.}
+\CodeExplainLine{21}{Kết thúc điều kiện xác nhận đỉnh nhịp.}
+\end{codeexplanation}
+
+Đây là nhánh quyết định trực tiếp khi nào BPM được phép xuất hiện trên màn hình và cách giá trị tiếp tục được làm mượt.
+
+\Needspace{0.40\textheight}
+\subsection{\texorpdfstring{Ratio-of-ratios cho SpO$_2$}{Ratio-of-ratios cho SpO2}}
+\begin{lstlisting}[style=firmware,caption={Tính tỷ số quang và giá trị SpO2 nguyên mẫu}]
+float redRms = sqrtf((float)(state.redSquareSum /
+                             state.windowSamples));
+float irRms = sqrtf((float)(state.irSquareSum /
+                            state.windowSamples));
+float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
+
+if (ratio > 0.2f && ratio < 2.0f) {
+  float estimatedSpO2 = constrain(110.0f - 25.0f * ratio,
+                                  70.0f, 100.0f);
+  ppg.spo2 = ppg.spo2Valid ?
+             0.8f * ppg.spo2 + 0.2f * estimatedSpO2 : estimatedSpO2;
+}
+\end{lstlisting}
+
+\begin{codeexplanation}
+\CodeExplainLine{1}{Tính giá trị hiệu dụng của thành phần AC kênh đỏ từ tổng bình phương trong cửa sổ.}
+\CodeExplainLine{2}{Chia tổng bình phương cho số mẫu trước khi lấy căn để nhận RMS đúng chuẩn.}
+\CodeExplainLine{3}{Bắt đầu phép tính RMS tương tự cho kênh hồng ngoại.}
+\CodeExplainLine{4}{Hoàn tất phép tính RMS kênh hồng ngoại theo số mẫu của cửa sổ.}
+\CodeExplainLine{5}{Tính tỷ số chuẩn hóa giữa AC/DC của kênh đỏ và AC/DC của kênh hồng ngoại.}
+\CodeExplainLine{6}{Dòng trống tách phép tính tỷ số với bước kiểm tra miền hợp lệ.}
+\CodeExplainLine{7}{Chỉ ước lượng SpO$_2$ khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}
+\CodeExplainLine{8}{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO$_2$.}
+\CodeExplainLine{9}{Giới hạn kết quả trong khoảng 70--100\% để tránh giá trị hiển thị phi thực tế.}
+\CodeExplainLine{10}{Kiểm tra hệ thống đã có kết quả SpO$_2$ hợp lệ từ cửa sổ trước hay chưa.}
+\CodeExplainLine{11}{Nếu đã có thì làm mượt 80/20; nếu chưa có thì dùng ngay ước lượng đầu tiên.}
+\CodeExplainLine{12}{Kết thúc nhánh cập nhật SpO$_2$.}
+\end{codeexplanation}
+
+Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem chúng là hệ số y tế đã hiệu chuẩn.
+
+\section{Nhật ký khối lượng}
+
+\begin{tabularx}{\textwidth}{L{7.6cm} C{2.1cm} Y}
+\toprule
+\textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
+\midrule
+Cấu hình thanh ghi và FIFO 100 Hz & 5 giờ & Luồng RED/IR liên tục\\
+Phát hiện ngón tay và reset trạng thái & 4 giờ & Không xuất số khi rời tay\\
+Lọc DC/AC và ngưỡng thích nghi & 5 giờ & Tín hiệu xung ổn định\\
+Phát hiện nhịp, khoảng trơ, BPM & 7 giờ & BPM quan sát 72--83\\
+Ratio-of-ratios và làm mượt SpO$_2$ & 6 giờ & Giá trị cùng cờ hợp lệ\\
+Đánh giá chất lượng, thử nghiệm & 3 giờ & $Q$, bảng kết quả và giới hạn\\
+\midrule
+\textbf{Tổng} & \textbf{30 giờ} & \textbf{Đã cài đặt; SpO$_2$ cần hiệu chuẩn}\\
+\bottomrule
+\end{tabularx}
+
+\section{Kết quả kiểm thử}
+
+\begin{tabularx}{\textwidth}{L{4.4cm} L{4.2cm} Y}
+\toprule
+\textbf{Tình huống} & \textbf{Quan sát} & \textbf{Kết luận}\\
+\midrule
+Không đặt ngón tay & IR khoảng 330--400; BPM/SpO$_2$ ở WAIT & \OK\\
+Đặt ngón tay ổn định & IR khoảng 132.000--137.000 & Nhận diện biên độ rõ\\
+Sau thời gian hội tụ & BPM khoảng 72--83 qua các lần thử & \OK\\
+Ước lượng SpO$_2$ thử nghiệm & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
+Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\
+\bottomrule
+\end{tabularx}
+
+\section{Kết quả đạt được}
+
+\begin{evidencebox}[Các giá trị đầu ra]
+Phần chương trình MAX30102 gồm các hàm khởi tạo, đọc FIFO, xử lý từng mẫu, phát hiện ngón tay, tính BPM, tính ratio-of-ratios và đánh giá chất lượng tín hiệu. Các giá trị dùng chung gồm \Code{fingerPresent}, \Code{bpm}, \Code{spo2}, \Code{signalQuality}, \Code{heartRateValid} và \Code{spo2Valid}.
+\end{evidencebox}
+
+\section{Nhận xét và hướng hoàn thiện}
+
+Thuật toán đã phát hiện được ngón tay và cho BPM ổn định trong điều kiện người đo giữ yên. SpO$_2$ hiện mới là giá trị ước lượng. Cần thu thêm dữ liệu đối chứng để hiệu chỉnh hệ số và đánh giá ảnh hưởng của lực ép, chuyển động và ánh sáng ngoài.
+
+\end{document}
