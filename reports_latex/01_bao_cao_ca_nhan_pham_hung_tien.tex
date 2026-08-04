@@ -43,26 +43,23 @@ Em viết các thao tác đọc/ghi thanh ghi dựa trên \Code{Wire} có sẵn 
 
 \Needspace{0.26\textheight}
 \begin{lstlisting}[style=firmware,caption={Đọc thanh ghi I2C và kiểm tra lỗi truyền}]
+(*@\VNCodeComment{Khai báo hàm đọc một thanh ghi; địa chỉ thiết bị và địa chỉ thanh ghi là đầu vào, còn byte đọc được trả qua biến tham chiếu.}@*)
 bool I2C_ReadRegister(uint8_t address, uint8_t reg, uint8_t &value) {
+(*@\VNCodeComment{Bắt đầu một giao dịch I2C với thiết bị có địa chỉ đã truyền vào.}@*)
   Wire.beginTransmission(address);
+(*@\VNCodeComment{Gửi địa chỉ thanh ghi cần đọc vào bộ đệm truyền của bus.}@*)
   Wire.write(reg);
+(*@\VNCodeComment{Phát repeated START thay vì STOP; nếu thiết bị trả NACK thì kết thúc hàm với trạng thái lỗi.}@*)
   if (Wire.endTransmission(false) != 0) return false;
+(*@\VNCodeComment{Yêu cầu đúng một byte từ thiết bị; số byte nhận khác một được xem là lỗi truyền.}@*)
   if (Wire.requestFrom(address, (uint8_t)1) != 1) return false;
+(*@\VNCodeComment{Lấy byte đang chờ trong bộ đệm I2C và ghi vào biến kết quả.}@*)
   value = Wire.read();
+(*@\VNCodeComment{Xác nhận toàn bộ thao tác đọc đã hoàn tất thành công.}@*)
   return true;
+(*@\VNCodeComment{Kết thúc thân hàm.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Khai báo hàm đọc một thanh ghi; địa chỉ thiết bị và địa chỉ thanh ghi là đầu vào, còn byte đọc được trả qua biến tham chiếu.}
-\CodeExplainLine{2}{Bắt đầu một giao dịch I2C với thiết bị có địa chỉ đã truyền vào.}
-\CodeExplainLine{3}{Gửi địa chỉ thanh ghi cần đọc vào bộ đệm truyền của bus.}
-\CodeExplainLine{4}{Phát repeated START thay vì STOP; nếu thiết bị trả NACK thì kết thúc hàm với trạng thái lỗi.}
-\CodeExplainLine{5}{Yêu cầu đúng một byte từ thiết bị; số byte nhận khác một được xem là lỗi truyền.}
-\CodeExplainLine{6}{Lấy byte đang chờ trong bộ đệm I2C và ghi vào biến kết quả.}
-\CodeExplainLine{7}{Xác nhận toàn bộ thao tác đọc đã hoàn tất thành công.}
-\CodeExplainLine{8}{Kết thúc thân hàm.}
-\end{codeexplanation}
 
 \subsection{Driver OLED và giao diện}
 
@@ -82,40 +79,37 @@ Framebuffer được truyền ở 400 kHz rồi bus trở lại 100 kHz cho cả
 
 \Needspace{0.38\textheight}
 \begin{lstlisting}[style=firmware,caption={Truyền framebuffer và trả bus về tốc độ cảm biến}]
+(*@\VNCodeComment{Khai báo hàm đẩy framebuffer hiện tại lên OLED và trả về trạng thái truyền.}@*)
 bool OLED_Update() {
+(*@\VNCodeComment{Không truy cập bus khi OLED chưa được khởi tạo hoặc đã bị đánh dấu mất kết nối.}@*)
   if (!oledOK) return false;
+(*@\VNCodeComment{Nâng tần số I2C lên mức dành cho màn hình để rút ngắn thời gian làm mới.}@*)
   Wire.setClock(I2C_DISPLAY_HZ);
+(*@\VNCodeComment{Gửi lệnh chọn phạm vi cột và bắt đầu chuỗi kiểm tra thành công.}@*)
   bool success = OLED_WriteCommand(0x21) && OLED_WriteCommand(0) &&
+(*@\VNCodeComment{Đặt cột cuối là 127 rồi chuyển sang lệnh chọn phạm vi trang.}@*)
                  OLED_WriteCommand(127) && OLED_WriteCommand(0x22) &&
+(*@\VNCodeComment{Chọn các trang từ 0 đến 7, tương ứng toàn bộ vùng 128 x 64 pixel.}@*)
                  OLED_WriteCommand(0) && OLED_WriteCommand(7);
+(*@\VNCodeComment{Chia framebuffer 1.024 byte thành từng gói 16 byte; vòng lặp dừng ngay khi có lỗi.}@*)
   for (int i = 0; success && i < 1024; i += 16) {
+(*@\VNCodeComment{Mở một giao dịch mới tới địa chỉ I2C của SSD1306.}@*)
     Wire.beginTransmission(OLED_ADDR);
+(*@\VNCodeComment{Gửi byte điều khiển 0x40 để báo các byte tiếp theo là dữ liệu ảnh.}@*)
     Wire.write(0x40);
+(*@\VNCodeComment{Chép 16 byte liên tiếp từ framebuffer vào bộ đệm truyền I2C.}@*)
     for (int j = 0; j < 16; j++) Wire.write(oledBuffer[i + j]);
+(*@\VNCodeComment{Phát dữ liệu và lưu kết quả ACK; mã trả về khác 0 làm biến trạng thái thành sai.}@*)
     success = Wire.endTransmission() == 0;
+(*@\VNCodeComment{Kết thúc vòng lặp truyền từng gói.}@*)
   }
+(*@\VNCodeComment{Hạ bus về tần số dành cho các cảm biến sau khi cập nhật màn hình.}@*)
   Wire.setClock(I2C_SENSOR_HZ);
+(*@\VNCodeComment{Trả kết quả để lớp gọi quyết định tiếp tục dùng hay khởi tạo lại OLED.}@*)
   return success;
+(*@\VNCodeComment{Kết thúc thân hàm.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Khai báo hàm đẩy framebuffer hiện tại lên OLED và trả về trạng thái truyền.}
-\CodeExplainLine{2}{Không truy cập bus khi OLED chưa được khởi tạo hoặc đã bị đánh dấu mất kết nối.}
-\CodeExplainLine{3}{Nâng tần số I2C lên mức dành cho màn hình để rút ngắn thời gian làm mới.}
-\CodeExplainLine{4}{Gửi lệnh chọn phạm vi cột và bắt đầu chuỗi kiểm tra thành công.}
-\CodeExplainLine{5}{Đặt cột cuối là 127 rồi chuyển sang lệnh chọn phạm vi trang.}
-\CodeExplainLine{6}{Chọn các trang từ 0 đến 7, tương ứng toàn bộ vùng 128 x 64 pixel.}
-\CodeExplainLine{7}{Chia framebuffer 1.024 byte thành từng gói 16 byte; vòng lặp dừng ngay khi có lỗi.}
-\CodeExplainLine{8}{Mở một giao dịch mới tới địa chỉ I2C của SSD1306.}
-\CodeExplainLine{9}{Gửi byte điều khiển 0x40 để báo các byte tiếp theo là dữ liệu ảnh.}
-\CodeExplainLine{10}{Chép 16 byte liên tiếp từ framebuffer vào bộ đệm truyền I2C.}
-\CodeExplainLine{11}{Phát dữ liệu và lưu kết quả ACK; mã trả về khác 0 làm biến trạng thái thành sai.}
-\CodeExplainLine{12}{Kết thúc vòng lặp truyền từng gói.}
-\CodeExplainLine{13}{Hạ bus về tần số dành cho các cảm biến sau khi cập nhật màn hình.}
-\CodeExplainLine{14}{Trả kết quả để lớp gọi quyết định tiếp tục dùng hay khởi tạo lại OLED.}
-\CodeExplainLine{15}{Kết thúc thân hàm.}
-\end{codeexplanation}
 
 \subsection{Lịch chạy và tích hợp}
 
@@ -123,38 +117,35 @@ Vòng lặp chính dùng mốc \Code{millis()} thay cho trì hoãn dài. GPS đ�
 
 \Needspace{0.38\textheight}
 \begin{lstlisting}[style=firmware,caption={Các tác vụ có chu kỳ độc lập trong vòng lặp chính}]
+(*@\VNCodeComment{Đọc toàn bộ byte GPS đang chờ để tránh tràn bộ đệm UART và mất câu NMEA.}@*)
 GPS_Poll();
+(*@\VNCodeComment{Cập nhật trạng thái phát âm mà không chặn các tác vụ còn lại.}@*)
 Buzzer_Update();
+(*@\VNCodeComment{Dòng trống phân tách hai tác vụ chạy liên tục với nhóm tác vụ chạy theo chu kỳ.}@*)
 
+(*@\VNCodeComment{Chỉ xử lý IMU khi khoảng thời gian lấy mẫu quy định đã trôi qua.}@*)
 if (millis() - lastIMUMs >= IMU_PERIOD_MS) {
+(*@\VNCodeComment{Ghi lại mốc thời gian của lần xử lý IMU hiện tại.}@*)
   lastIMUMs = millis();
+(*@\VNCodeComment{Chỉ đọc gia tốc khi mô-đun IMU đang ở trạng thái hoạt động.}@*)
   if (imuOK) {
+(*@\VNCodeComment{Nếu đọc được ba trục gia tốc thì chuyển mẫu sang thuật toán phát hiện té ngã.}@*)
     if (IMU_ReadAccel(ax, ay, az)) Fall_Process(ax, ay, az);
+(*@\VNCodeComment{Đánh dấu IMU mất kết nối khi thao tác đọc thất bại để tránh dùng dữ liệu cũ.}@*)
     else imuOK = false;
+(*@\VNCodeComment{Kết thúc nhánh kiểm tra trạng thái IMU.}@*)
   }
+(*@\VNCodeComment{Kết thúc khối tác vụ IMU theo chu kỳ.}@*)
 }
+(*@\VNCodeComment{Kiểm tra đã đến thời điểm làm mới màn hình hay chưa.}@*)
 if (millis() - lastDisplayMs >= DISPLAY_PERIOD_MS) {
+(*@\VNCodeComment{Cập nhật mốc thời gian của lần hiển thị hiện tại.}@*)
   lastDisplayMs = millis();
+(*@\VNCodeComment{Dựng nội dung trạng thái mới vào framebuffer và truyền lên OLED.}@*)
   OLED_RenderStatus();
+(*@\VNCodeComment{Kết thúc khối cập nhật màn hình.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Đọc toàn bộ byte GPS đang chờ để tránh tràn bộ đệm UART và mất câu NMEA.}
-\CodeExplainLine{2}{Cập nhật trạng thái phát âm mà không chặn các tác vụ còn lại.}
-\CodeExplainLine{3}{Dòng trống phân tách hai tác vụ chạy liên tục với nhóm tác vụ chạy theo chu kỳ.}
-\CodeExplainLine{4}{Chỉ xử lý IMU khi khoảng thời gian lấy mẫu quy định đã trôi qua.}
-\CodeExplainLine{5}{Ghi lại mốc thời gian của lần xử lý IMU hiện tại.}
-\CodeExplainLine{6}{Chỉ đọc gia tốc khi mô-đun IMU đang ở trạng thái hoạt động.}
-\CodeExplainLine{7}{Nếu đọc được ba trục gia tốc thì chuyển mẫu sang thuật toán phát hiện té ngã.}
-\CodeExplainLine{8}{Đánh dấu IMU mất kết nối khi thao tác đọc thất bại để tránh dùng dữ liệu cũ.}
-\CodeExplainLine{9}{Kết thúc nhánh kiểm tra trạng thái IMU.}
-\CodeExplainLine{10}{Kết thúc khối tác vụ IMU theo chu kỳ.}
-\CodeExplainLine{11}{Kiểm tra đã đến thời điểm làm mới màn hình hay chưa.}
-\CodeExplainLine{12}{Cập nhật mốc thời gian của lần hiển thị hiện tại.}
-\CodeExplainLine{13}{Dựng nội dung trạng thái mới vào framebuffer và truyền lên OLED.}
-\CodeExplainLine{14}{Kết thúc khối cập nhật màn hình.}
-\end{codeexplanation}
 
 \subsection{Khắc phục lỗi biên dịch và nạp}
 

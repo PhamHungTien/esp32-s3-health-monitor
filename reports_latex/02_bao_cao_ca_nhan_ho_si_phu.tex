@@ -52,40 +52,37 @@ Thành phần DC được ước lượng bằng bộ lọc IIR chậm. Thành p
 
 \Needspace{0.38\textheight}
 \begin{lstlisting}[style=firmware,caption={Ngưỡng trễ nhận ngón tay và xóa trạng thái khi rời tay}]
+(*@\VNCodeComment{Chọn ngưỡng IR theo trạng thái trước đó để tạo vùng trễ khi nhận hoặc bỏ ngón tay.}@*)
 bool hasFinger = ppg.fingerPresent ?
+(*@\VNCodeComment{Khi đã nhận ngón tay dùng ngưỡng 7.000; khi chưa nhận dùng ngưỡng 10.000 để chống dao động.}@*)
                    (irValue > 7000) : (irValue > 10000);
+(*@\VNCodeComment{Đi vào nhánh xử lý khi mẫu hiện tại không còn đủ điều kiện có ngón tay.}@*)
 if (!hasFinger) {
+(*@\VNCodeComment{Nếu vừa chuyển từ có sang không có ngón tay thì xóa các kết quả đo của phiên trước.}@*)
   if (ppg.fingerPresent) PPG_ResetMetrics();
+(*@\VNCodeComment{Đặt mức nền kênh đỏ bằng mẫu hiện tại để bộ lọc khởi động lại đúng mức tín hiệu.}@*)
   state.dcRed = redValue;
+(*@\VNCodeComment{Đặt mức nền kênh hồng ngoại theo cùng nguyên tắc.}@*)
   state.dcIr = irValue;
+(*@\VNCodeComment{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO$_2$ khi chưa có ngón tay.}@*)
   return;
+(*@\VNCodeComment{Kết thúc nhánh không có ngón tay.}@*)
 }
+(*@\VNCodeComment{Dòng trống tách phần loại bỏ mẫu với phần khởi tạo một phiên đo mới.}@*)
 
+(*@\VNCodeComment{Kiểm tra đây có phải mẫu hợp lệ đầu tiên sau khi đặt ngón tay hay không.}@*)
 if (!ppg.fingerPresent) {
+(*@\VNCodeComment{Ghi nhận cảm biến đang có ngón tay.}@*)
   ppg.fingerPresent = true;
+(*@\VNCodeComment{Lưu thời điểm bắt đầu phiên đo để các bước sau biết tuổi của tín hiệu.}@*)
   state.fingerStartMs = sampleTimeMs;
+(*@\VNCodeComment{Khởi tạo mức nền kênh đỏ bằng mẫu đầu tiên của phiên đo.}@*)
   state.dcRed = redValue;
+(*@\VNCodeComment{Khởi tạo mức nền kênh hồng ngoại bằng mẫu đầu tiên của phiên đo.}@*)
   state.dcIr = irValue;
+(*@\VNCodeComment{Kết thúc khối khởi tạo phiên đo.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Chọn ngưỡng IR theo trạng thái trước đó để tạo vùng trễ khi nhận hoặc bỏ ngón tay.}
-\CodeExplainLine{2}{Khi đã nhận ngón tay dùng ngưỡng 7.000; khi chưa nhận dùng ngưỡng 10.000 để chống dao động.}
-\CodeExplainLine{3}{Đi vào nhánh xử lý khi mẫu hiện tại không còn đủ điều kiện có ngón tay.}
-\CodeExplainLine{4}{Nếu vừa chuyển từ có sang không có ngón tay thì xóa các kết quả đo của phiên trước.}
-\CodeExplainLine{5}{Đặt mức nền kênh đỏ bằng mẫu hiện tại để bộ lọc khởi động lại đúng mức tín hiệu.}
-\CodeExplainLine{6}{Đặt mức nền kênh hồng ngoại theo cùng nguyên tắc.}
-\CodeExplainLine{7}{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO$_2$ khi chưa có ngón tay.}
-\CodeExplainLine{8}{Kết thúc nhánh không có ngón tay.}
-\CodeExplainLine{9}{Dòng trống tách phần loại bỏ mẫu với phần khởi tạo một phiên đo mới.}
-\CodeExplainLine{10}{Kiểm tra đây có phải mẫu hợp lệ đầu tiên sau khi đặt ngón tay hay không.}
-\CodeExplainLine{11}{Ghi nhận cảm biến đang có ngón tay.}
-\CodeExplainLine{12}{Lưu thời điểm bắt đầu phiên đo để các bước sau biết tuổi của tín hiệu.}
-\CodeExplainLine{13}{Khởi tạo mức nền kênh đỏ bằng mẫu đầu tiên của phiên đo.}
-\CodeExplainLine{14}{Khởi tạo mức nền kênh hồng ngoại bằng mẫu đầu tiên của phiên đo.}
-\CodeExplainLine{15}{Kết thúc khối khởi tạo phiên đo.}
-\end{codeexplanation}
 
 \subsection{Thuật toán nhịp tim}
 
@@ -122,86 +119,80 @@ Bộ dò sử dụng đáy cục bộ, ngưỡng theo biên độ tín hiệu v�
 
 \Needspace{0.42\textheight}
 \begin{lstlisting}[style=firmware,caption={Điều kiện phát hiện nhịp và hiển thị BPM sớm}]
+(*@\VNCodeComment{Tính độ dốc của tín hiệu đã lọc so với mẫu ngay trước đó.}@*)
 float slope = state.filtered - state.previousFiltered;
+(*@\VNCodeComment{Đặt ngưỡng đỉnh bằng 95\% biên độ bao hiện tại để ngưỡng tự thích nghi với cường độ tín hiệu.}@*)
 float peakThreshold = state.envelope * 0.95f;
+(*@\VNCodeComment{Giới hạn ngưỡng tối thiểu ở 100 để nhiễu nhỏ không bị nhận nhầm thành nhịp.}@*)
 if (peakThreshold < 100.0f) peakThreshold = 100.0f;
+(*@\VNCodeComment{Dòng trống phân tách bước chuẩn bị ngưỡng với bước xác nhận đỉnh.}@*)
 
+(*@\VNCodeComment{Phát hiện thời điểm độ dốc đổi từ âm sang không âm, tức một cực tiểu của dạng sóng đã đảo.}@*)
 if (state.previousSlope < 0.0f && slope >= 0.0f &&
+(*@\VNCodeComment{Yêu cầu biên độ cực tiểu vượt ngưỡng thích nghi vừa tính.}@*)
     state.previousFiltered < -peakThreshold &&
+(*@\VNCodeComment{Buộc hai nhịp cách nhau hơn 450 ms để loại bỏ đỉnh giả quá gần.}@*)
     now - ppg.lastBeatMs > 450) {
+(*@\VNCodeComment{Chỉ tính khoảng RR khi hệ thống đã lưu được thời điểm của một nhịp trước.}@*)
   if (ppg.lastBeatMs != 0) {
+(*@\VNCodeComment{Tính khoảng thời gian giữa hai nhịp liên tiếp theo mili giây.}@*)
     uint32_t interval = now - ppg.lastBeatMs;
+(*@\VNCodeComment{Chỉ chấp nhận khoảng RR từ 480 đến 1.500 ms, tương ứng vùng nhịp hợp lý của nguyên mẫu.}@*)
     if (interval >= 480 && interval <= 1500) {
+(*@\VNCodeComment{Đổi khoảng RR sang nhịp mỗi phút bằng công thức 60.000 chia cho số mili giây.}@*)
       float instantBPM = 60000.0f / interval;
+(*@\VNCodeComment{Kiểm tra đây có phải giá trị BPM hợp lệ đầu tiên của phiên đo hay không.}@*)
       if (!ppg.heartRateValid) {
+(*@\VNCodeComment{Hiển thị trực tiếp BPM tức thời ở nhịp hợp lệ đầu tiên.}@*)
         ppg.bpm = instantBPM;
+(*@\VNCodeComment{Đánh dấu BPM đã sẵn sàng để giao diện không tiếp tục hiện dấu chờ.}@*)
         ppg.heartRateValid = true;
+(*@\VNCodeComment{Với các nhịp sau, chỉ nhận giá trị mới nếu chênh lệch không quá 22 BPM.}@*)
       } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
+(*@\VNCodeComment{Làm mượt bằng 80\% giá trị cũ và 20\% giá trị mới để giảm rung số.}@*)
         ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
+(*@\VNCodeComment{Kết thúc nhánh cập nhật BPM sau khi đã có kết quả trước đó.}@*)
       }
+(*@\VNCodeComment{Kết thúc khối kiểm tra khoảng RR hợp lệ.}@*)
     }
+(*@\VNCodeComment{Kết thúc khối yêu cầu phải có nhịp trước.}@*)
   }
+(*@\VNCodeComment{Lưu thời điểm đỉnh hiện tại; đỉnh này sẽ làm mốc cho lần tính RR tiếp theo.}@*)
   ppg.lastBeatMs = now;
+(*@\VNCodeComment{Kết thúc điều kiện xác nhận đỉnh nhịp.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Tính độ dốc của tín hiệu đã lọc so với mẫu ngay trước đó.}
-\CodeExplainLine{2}{Đặt ngưỡng đỉnh bằng 95\% biên độ bao hiện tại để ngưỡng tự thích nghi với cường độ tín hiệu.}
-\CodeExplainLine{3}{Giới hạn ngưỡng tối thiểu ở 100 để nhiễu nhỏ không bị nhận nhầm thành nhịp.}
-\CodeExplainLine{4}{Dòng trống phân tách bước chuẩn bị ngưỡng với bước xác nhận đỉnh.}
-\CodeExplainLine{5}{Phát hiện thời điểm độ dốc đổi từ âm sang không âm, tức một cực tiểu của dạng sóng đã đảo.}
-\CodeExplainLine{6}{Yêu cầu biên độ cực tiểu vượt ngưỡng thích nghi vừa tính.}
-\CodeExplainLine{7}{Buộc hai nhịp cách nhau hơn 450 ms để loại bỏ đỉnh giả quá gần.}
-\CodeExplainLine{8}{Chỉ tính khoảng RR khi hệ thống đã lưu được thời điểm của một nhịp trước.}
-\CodeExplainLine{9}{Tính khoảng thời gian giữa hai nhịp liên tiếp theo mili giây.}
-\CodeExplainLine{10}{Chỉ chấp nhận khoảng RR từ 480 đến 1.500 ms, tương ứng vùng nhịp hợp lý của nguyên mẫu.}
-\CodeExplainLine{11}{Đổi khoảng RR sang nhịp mỗi phút bằng công thức 60.000 chia cho số mili giây.}
-\CodeExplainLine{12}{Kiểm tra đây có phải giá trị BPM hợp lệ đầu tiên của phiên đo hay không.}
-\CodeExplainLine{13}{Hiển thị trực tiếp BPM tức thời ở nhịp hợp lệ đầu tiên.}
-\CodeExplainLine{14}{Đánh dấu BPM đã sẵn sàng để giao diện không tiếp tục hiện dấu chờ.}
-\CodeExplainLine{15}{Với các nhịp sau, chỉ nhận giá trị mới nếu chênh lệch không quá 22 BPM.}
-\CodeExplainLine{16}{Làm mượt bằng 80\% giá trị cũ và 20\% giá trị mới để giảm rung số.}
-\CodeExplainLine{17}{Kết thúc nhánh cập nhật BPM sau khi đã có kết quả trước đó.}
-\CodeExplainLine{18}{Kết thúc khối kiểm tra khoảng RR hợp lệ.}
-\CodeExplainLine{19}{Kết thúc khối yêu cầu phải có nhịp trước.}
-\CodeExplainLine{20}{Lưu thời điểm đỉnh hiện tại; đỉnh này sẽ làm mốc cho lần tính RR tiếp theo.}
-\CodeExplainLine{21}{Kết thúc điều kiện xác nhận đỉnh nhịp.}
-\end{codeexplanation}
 
 Đây là nhánh quyết định trực tiếp khi nào BPM được phép xuất hiện trên màn hình và cách giá trị tiếp tục được làm mượt.
 
 \Needspace{0.40\textheight}
 \subsection{\texorpdfstring{Ratio-of-ratios cho SpO$_2$}{Ratio-of-ratios cho SpO2}}
 \begin{lstlisting}[style=firmware,caption={Tính tỷ số quang và giá trị SpO2 nguyên mẫu}]
+(*@\VNCodeComment{Tính giá trị hiệu dụng của thành phần AC kênh đỏ từ tổng bình phương trong cửa sổ.}@*)
 float redRms = sqrtf((float)(state.redSquareSum /
+(*@\VNCodeComment{Chia tổng bình phương cho số mẫu trước khi lấy căn để nhận RMS đúng chuẩn.}@*)
                              state.windowSamples));
+(*@\VNCodeComment{Bắt đầu phép tính RMS tương tự cho kênh hồng ngoại.}@*)
 float irRms = sqrtf((float)(state.irSquareSum /
+(*@\VNCodeComment{Hoàn tất phép tính RMS kênh hồng ngoại theo số mẫu của cửa sổ.}@*)
                             state.windowSamples));
+(*@\VNCodeComment{Tính tỷ số chuẩn hóa giữa AC/DC của kênh đỏ và AC/DC của kênh hồng ngoại.}@*)
 float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
+(*@\VNCodeComment{Dòng trống tách phép tính tỷ số với bước kiểm tra miền hợp lệ.}@*)
 
+(*@\VNCodeComment{Chỉ ước lượng SpO$_2$ khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}@*)
 if (ratio > 0.2f && ratio < 2.0f) {
+(*@\VNCodeComment{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO$_2$.}@*)
   float estimatedSpO2 = constrain(110.0f - 25.0f * ratio,
+(*@\VNCodeComment{Giới hạn kết quả trong khoảng 70--100\% để tránh giá trị hiển thị phi thực tế.}@*)
                                   70.0f, 100.0f);
+(*@\VNCodeComment{Kiểm tra hệ thống đã có kết quả SpO$_2$ hợp lệ từ cửa sổ trước hay chưa.}@*)
   ppg.spo2 = ppg.spo2Valid ?
+(*@\VNCodeComment{Nếu đã có thì làm mượt 80/20; nếu chưa có thì dùng ngay ước lượng đầu tiên.}@*)
              0.8f * ppg.spo2 + 0.2f * estimatedSpO2 : estimatedSpO2;
+(*@\VNCodeComment{Kết thúc nhánh cập nhật SpO$_2$.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Tính giá trị hiệu dụng của thành phần AC kênh đỏ từ tổng bình phương trong cửa sổ.}
-\CodeExplainLine{2}{Chia tổng bình phương cho số mẫu trước khi lấy căn để nhận RMS đúng chuẩn.}
-\CodeExplainLine{3}{Bắt đầu phép tính RMS tương tự cho kênh hồng ngoại.}
-\CodeExplainLine{4}{Hoàn tất phép tính RMS kênh hồng ngoại theo số mẫu của cửa sổ.}
-\CodeExplainLine{5}{Tính tỷ số chuẩn hóa giữa AC/DC của kênh đỏ và AC/DC của kênh hồng ngoại.}
-\CodeExplainLine{6}{Dòng trống tách phép tính tỷ số với bước kiểm tra miền hợp lệ.}
-\CodeExplainLine{7}{Chỉ ước lượng SpO$_2$ khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}
-\CodeExplainLine{8}{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO$_2$.}
-\CodeExplainLine{9}{Giới hạn kết quả trong khoảng 70--100\% để tránh giá trị hiển thị phi thực tế.}
-\CodeExplainLine{10}{Kiểm tra hệ thống đã có kết quả SpO$_2$ hợp lệ từ cửa sổ trước hay chưa.}
-\CodeExplainLine{11}{Nếu đã có thì làm mượt 80/20; nếu chưa có thì dùng ngay ước lượng đầu tiên.}
-\CodeExplainLine{12}{Kết thúc nhánh cập nhật SpO$_2$.}
-\end{codeexplanation}
 
 Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem chúng là hệ số y tế đã hiệu chuẩn.
 

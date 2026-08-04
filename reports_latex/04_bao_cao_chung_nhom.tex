@@ -188,109 +188,97 @@ Các đoạn dưới đây được trích từ sketch nộp kèm. Chúng thể 
 
 \Needspace{0.28\textheight}
 \begin{lstlisting}[style=firmware,caption={Không dùng dữ liệu PPG cũ khi cảm biến mất kết nối}]
+(*@\VNCodeComment{Đọc một mẫu từ FIFO MAX30102 và lưu loại kết quả trả về.}@*)
 int8_t result = MAX30102_ReadFIFO();
+(*@\VNCodeComment{Thoát vòng đọc khi FIFO hiện không có mẫu mới; đây không phải lỗi cảm biến.}@*)
 if (result == FIFO_NO_DATA) break;
+(*@\VNCodeComment{Đi vào nhánh xử lý riêng khi giao dịch I2C với MAX30102 thất bại.}@*)
 if (result == FIFO_BUS_ERROR) {
+(*@\VNCodeComment{Đánh dấu cảm biến quang đang mất kết nối để cơ chế phục hồi có thể khởi tạo lại.}@*)
   maxOK = false;
+(*@\VNCodeComment{Xóa BPM, SpO$_2$ và trạng thái bộ lọc để không giữ số đo của phiên cũ.}@*)
   PPG_ResetMetrics();
+(*@\VNCodeComment{Đặt cả hai mẫu quang thô về 0, tránh giao diện hiểu dữ liệu cũ là mẫu mới.}@*)
   ppg.redRaw = ppg.irRaw = 0;
+(*@\VNCodeComment{Dừng vòng đọc FIFO ngay sau lỗi bus.}@*)
   break;
+(*@\VNCodeComment{Kết thúc nhánh xử lý lỗi giao tiếp.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Đọc một mẫu từ FIFO MAX30102 và lưu loại kết quả trả về.}
-\CodeExplainLine{2}{Thoát vòng đọc khi FIFO hiện không có mẫu mới; đây không phải lỗi cảm biến.}
-\CodeExplainLine{3}{Đi vào nhánh xử lý riêng khi giao dịch I2C với MAX30102 thất bại.}
-\CodeExplainLine{4}{Đánh dấu cảm biến quang đang mất kết nối để cơ chế phục hồi có thể khởi tạo lại.}
-\CodeExplainLine{5}{Xóa BPM, SpO$_2$ và trạng thái bộ lọc để không giữ số đo của phiên cũ.}
-\CodeExplainLine{6}{Đặt cả hai mẫu quang thô về 0, tránh giao diện hiểu dữ liệu cũ là mẫu mới.}
-\CodeExplainLine{7}{Dừng vòng đọc FIFO ngay sau lỗi bus.}
-\CodeExplainLine{8}{Kết thúc nhánh xử lý lỗi giao tiếp.}
-\end{codeexplanation}
 
 \subsection{Xác nhận BPM trước khi hiển thị}
 
 \Needspace{0.24\textheight}
 \begin{lstlisting}[style=firmware,caption={Khoảng RR hợp lệ đầu tiên tạo BPM ban đầu}]
+(*@\VNCodeComment{Kiểm tra hệ thống đã có một kết quả BPM hợp lệ trong phiên đo hiện tại hay chưa.}@*)
 if (!ppg.heartRateValid) {
+(*@\VNCodeComment{Ở nhịp hợp lệ đầu tiên, dùng trực tiếp BPM tức thời để giao diện hiện kết quả sớm.}@*)
   ppg.bpm = instantBPM;
+(*@\VNCodeComment{Đánh dấu kết quả đã hợp lệ để các nhịp sau chuyển sang chế độ làm mượt.}@*)
   ppg.heartRateValid = true;
+(*@\VNCodeComment{Chỉ nhận BPM tiếp theo nếu nó lệch không quá 22 BPM so với giá trị đang hiển thị.}@*)
 } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
+(*@\VNCodeComment{Kết hợp 80\% giá trị cũ với 20\% giá trị mới để giảm dao động giữa các nhịp.}@*)
   ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
+(*@\VNCodeComment{Kết thúc nhánh lựa chọn giữa khởi tạo nhanh và cập nhật đã lọc.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Kiểm tra hệ thống đã có một kết quả BPM hợp lệ trong phiên đo hiện tại hay chưa.}
-\CodeExplainLine{2}{Ở nhịp hợp lệ đầu tiên, dùng trực tiếp BPM tức thời để giao diện hiện kết quả sớm.}
-\CodeExplainLine{3}{Đánh dấu kết quả đã hợp lệ để các nhịp sau chuyển sang chế độ làm mượt.}
-\CodeExplainLine{4}{Chỉ nhận BPM tiếp theo nếu nó lệch không quá 22 BPM so với giá trị đang hiển thị.}
-\CodeExplainLine{5}{Kết hợp 80\% giá trị cũ với 20\% giá trị mới để giảm dao động giữa các nhịp.}
-\CodeExplainLine{6}{Kết thúc nhánh lựa chọn giữa khởi tạo nhanh và cập nhật đã lọc.}
-\end{codeexplanation}
 
 \Needspace{0.42\textheight}
 \subsection{Điều kiện bước chân và té ngã}
 \begin{lstlisting}[style=firmware,caption={Ngưỡng động học dùng cho hai chức năng IMU}]
+(*@\VNCodeComment{Chỉ xét một bước khi đã thấy đáy âm và tín hiệu động vượt ngưỡng dương 0,11 g.}@*)
 if (peakArmed && dynamicFiltered > 0.11f &&
+(*@\VNCodeComment{Yêu cầu cách đỉnh trước hơn 280 ms và tổng gia tốc nhỏ hơn 1,8 g để loại rung hoặc va đập.}@*)
     now - lastPeakMs > 280 && totalG < 1.8f) {
+(*@\VNCodeComment{Tính thời gian giữa hai đỉnh; khi chưa có đỉnh trước thì trả về 0.}@*)
   uint32_t interval = lastPeakMs == 0 ? 0 : now - lastPeakMs;
+(*@\VNCodeComment{Xác nhận chu kỳ nằm trong miền 280--1.800 ms của một nhịp bước hợp lý.}@*)
   if (interval >= 280 && interval <= 1800) {
+(*@\VNCodeComment{Kiểm tra chuỗi đi bộ đã được xác nhận hay mới bắt đầu.}@*)
     if (walkingSequence) {
+(*@\VNCodeComment{Nếu chuỗi đang hợp lệ, cộng thêm đúng một bước cho đỉnh mới.}@*)
       stepCount++;
+(*@\VNCodeComment{Đi vào nhánh khởi tạo khi vừa có cặp đỉnh hợp lệ đầu tiên.}@*)
     } else {
+(*@\VNCodeComment{Cộng hai bước để tính cả đỉnh đầu tiên từng được giữ lại để xác nhận chuỗi.}@*)
       stepCount += 2;
+(*@\VNCodeComment{Đánh dấu các đỉnh tiếp theo thuộc cùng một chuỗi đi bộ.}@*)
       walkingSequence = true;
+(*@\VNCodeComment{Kết thúc lựa chọn cách cập nhật bộ đếm bước.}@*)
     }
+(*@\VNCodeComment{Kết thúc điều kiện chu kỳ bước hợp lệ.}@*)
   }
+(*@\VNCodeComment{Kết thúc điều kiện xác nhận đỉnh dương.}@*)
 }
+(*@\VNCodeComment{Dòng trống phân tách thuật toán đếm bước với điều kiện phát cảnh báo té ngã.}@*)
 
+(*@\VNCodeComment{Sau va đập, yêu cầu bất động hơn 1.800 ms và mức chuyển động dưới 0,08 g.}@*)
 if (now - fallStateMs > 1800 && motionLevel < 0.08f &&
+(*@\VNCodeComment{Đồng thời yêu cầu tổng gia tốc nằm gần 1 g, từ 0,72 đến 1,28 g.}@*)
     accelerationG > 0.72f && accelerationG < 1.28f) {
+(*@\VNCodeComment{Chuyển sang trạng thái cảnh báo khi các điều kiện sau va đập đều được thỏa mãn.}@*)
   fallState = FALL_ALERT;
+(*@\VNCodeComment{Kết thúc điều kiện xác nhận cảnh báo té ngã.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Chỉ xét một bước khi đã thấy đáy âm và tín hiệu động vượt ngưỡng dương 0,11 g.}
-\CodeExplainLine{2}{Yêu cầu cách đỉnh trước hơn 280 ms và tổng gia tốc nhỏ hơn 1,8 g để loại rung hoặc va đập.}
-\CodeExplainLine{3}{Tính thời gian giữa hai đỉnh; khi chưa có đỉnh trước thì trả về 0.}
-\CodeExplainLine{4}{Xác nhận chu kỳ nằm trong miền 280--1.800 ms của một nhịp bước hợp lý.}
-\CodeExplainLine{5}{Kiểm tra chuỗi đi bộ đã được xác nhận hay mới bắt đầu.}
-\CodeExplainLine{6}{Nếu chuỗi đang hợp lệ, cộng thêm đúng một bước cho đỉnh mới.}
-\CodeExplainLine{7}{Đi vào nhánh khởi tạo khi vừa có cặp đỉnh hợp lệ đầu tiên.}
-\CodeExplainLine{8}{Cộng hai bước để tính cả đỉnh đầu tiên từng được giữ lại để xác nhận chuỗi.}
-\CodeExplainLine{9}{Đánh dấu các đỉnh tiếp theo thuộc cùng một chuỗi đi bộ.}
-\CodeExplainLine{10}{Kết thúc lựa chọn cách cập nhật bộ đếm bước.}
-\CodeExplainLine{11}{Kết thúc điều kiện chu kỳ bước hợp lệ.}
-\CodeExplainLine{12}{Kết thúc điều kiện xác nhận đỉnh dương.}
-\CodeExplainLine{13}{Dòng trống phân tách thuật toán đếm bước với điều kiện phát cảnh báo té ngã.}
-\CodeExplainLine{14}{Sau va đập, yêu cầu bất động hơn 1.800 ms và mức chuyển động dưới 0,08 g.}
-\CodeExplainLine{15}{Đồng thời yêu cầu tổng gia tốc nằm gần 1 g, từ 0,72 đến 1,28 g.}
-\CodeExplainLine{16}{Chuyển sang trạng thái cảnh báo khi các điều kiện sau va đập đều được thỏa mãn.}
-\CodeExplainLine{17}{Kết thúc điều kiện xác nhận cảnh báo té ngã.}
-\end{codeexplanation}
 
 \Needspace{0.28\textheight}
 \subsection{Loại câu NMEA sai checksum}
 \begin{lstlisting}[style=firmware,caption={Checksum XOR của phần thân câu NMEA}]
+(*@\VNCodeComment{Khởi tạo byte checksum tự tính bằng 0.}@*)
 uint8_t checksum = 0;
+(*@\VNCodeComment{Duyệt phần thân NMEA, bắt đầu sau ký tự đô-la và dừng trước dấu sao.}@*)
 for (const char *p = sentence + 1; p < star; p++) {
+(*@\VNCodeComment{XOR lần lượt từng ký tự để tạo checksum theo chuẩn NMEA 0183.}@*)
   checksum ^= (uint8_t)*p;
+(*@\VNCodeComment{Kết thúc vòng lặp sau khi đã xử lý hết phần thân câu.}@*)
 }
+(*@\VNCodeComment{Ghép hai chữ số hexadecimal đã chuyển đổi thành checksum nhận kèm câu.}@*)
 uint8_t expected = (uint8_t)((high << 4) | low);
+(*@\VNCodeComment{Trả về đúng khi byte tự tính trùng byte nhận được; câu sai checksum bị loại.}@*)
 return checksum == expected;
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Khởi tạo byte checksum tự tính bằng 0.}
-\CodeExplainLine{2}{Duyệt phần thân NMEA, bắt đầu sau ký tự đô-la và dừng trước dấu sao.}
-\CodeExplainLine{3}{XOR lần lượt từng ký tự để tạo checksum theo chuẩn NMEA 0183.}
-\CodeExplainLine{4}{Kết thúc vòng lặp sau khi đã xử lý hết phần thân câu.}
-\CodeExplainLine{5}{Ghép hai chữ số hexadecimal đã chuyển đổi thành checksum nhận kèm câu.}
-\CodeExplainLine{6}{Trả về đúng khi byte tự tính trùng byte nhận được; câu sai checksum bị loại.}
-\end{codeexplanation}
 
 \section{Phân công thực hiện}
 

@@ -57,60 +57,57 @@ Mọi trạng thái trung gian đều có timeout để quay về NORMAL nếu c
 \Needspace{0.42\textheight}
 \thispagestyle{fancy}
 \begin{lstlisting}[style=firmware,caption={Các điều kiện quyết định trong máy trạng thái té ngã}]
+(*@\VNCodeComment{Bắt đầu nhánh xử lý khi máy trạng thái đang ở điều kiện vận động bình thường.}@*)
 case FALL_NORMAL:
+(*@\VNCodeComment{Kiểm tra tổng gia tốc nhỏ hơn 0,45 g, dấu hiệu cơ thể có thể đang rơi tự do.}@*)
   if (accelerationG < 0.45f) {
+(*@\VNCodeComment{Lưu mốc bắt đầu mức gia tốc thấp nếu đây là mẫu thấp đầu tiên.}@*)
     if (lowGStartMs == 0) lowGStartMs = now;
+(*@\VNCodeComment{Yêu cầu điều kiện gia tốc thấp kéo dài ít nhất 120 ms để loại nhiễu tức thời.}@*)
     if (now - lowGStartMs >= 120) {
+(*@\VNCodeComment{Chuyển máy trạng thái sang giai đoạn rơi tự do đã được xác nhận.}@*)
       fallState = FALL_FREE_FALL;
+(*@\VNCodeComment{Lưu thời điểm chuyển trạng thái để kiểm soát thời hạn của giai đoạn tiếp theo.}@*)
       fallStateMs = now;
+(*@\VNCodeComment{Kết thúc khối xác nhận đủ thời gian gia tốc thấp.}@*)
     }
+(*@\VNCodeComment{Đi vào nhánh này khi tổng gia tốc đã trở lại từ 0,45 g trở lên.}@*)
   } else {
+(*@\VNCodeComment{Xóa mốc gia tốc thấp vì chuỗi rơi tự do không còn liên tục.}@*)
     lowGStartMs = 0;
+(*@\VNCodeComment{Kết thúc phép kiểm tra rơi tự do.}@*)
   }
+(*@\VNCodeComment{Kiểm tra xung va đập trực tiếp lớn hơn 2,8 g.}@*)
   if (accelerationG > 2.8f) {
+(*@\VNCodeComment{Chuyển sang trạng thái va đập khi phát hiện xung mạnh.}@*)
     fallState = FALL_IMPACT;
+(*@\VNCodeComment{Lưu thời điểm va đập để bắt đầu cửa sổ kiểm tra bất động.}@*)
     fallStateMs = now;
+(*@\VNCodeComment{Kết thúc nhánh phát hiện va đập trực tiếp.}@*)
   }
+(*@\VNCodeComment{Thoát khỏi nhánh trạng thái bình thường của câu lệnh switch.}@*)
   break;
+(*@\VNCodeComment{Dòng trống phân tách hai trạng thái của máy trạng thái.}@*)
 
+(*@\VNCodeComment{Bắt đầu nhánh xử lý sau khi đã phát hiện va đập.}@*)
 case FALL_IMPACT:
+(*@\VNCodeComment{Yêu cầu đã qua 1.800 ms và mức chuyển động nhỏ hơn 0,08 g.}@*)
   if (now - fallStateMs > 1800 && motionLevel < 0.08f &&
+(*@\VNCodeComment{Đồng thời yêu cầu tư thế tĩnh có tổng gia tốc gần 1 g, trong khoảng 0,72--1,28 g.}@*)
       accelerationG > 0.72f && accelerationG < 1.28f) {
+(*@\VNCodeComment{Chuyển sang cảnh báo té ngã khi toàn bộ điều kiện bất động đều đúng.}@*)
     fallState = FALL_ALERT;
+(*@\VNCodeComment{Lưu thời điểm phát cảnh báo để phục vụ hiển thị, còi và thao tác hủy.}@*)
     fallStateMs = now;
+(*@\VNCodeComment{Nếu sau 5 giây vẫn không đủ điều kiện bất động thì xem va đập là sự kiện giả.}@*)
   } else if (now - fallStateMs > 5000) {
+(*@\VNCodeComment{Đưa máy trạng thái về bình thường để tiếp tục giám sát.}@*)
     fallState = FALL_NORMAL;
+(*@\VNCodeComment{Kết thúc nhánh hết thời hạn chờ sau va đập.}@*)
   }
+(*@\VNCodeComment{Thoát khỏi nhánh trạng thái va đập.}@*)
   break;
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Bắt đầu nhánh xử lý khi máy trạng thái đang ở điều kiện vận động bình thường.}
-\CodeExplainLine{2}{Kiểm tra tổng gia tốc nhỏ hơn 0,45 g, dấu hiệu cơ thể có thể đang rơi tự do.}
-\CodeExplainLine{3}{Lưu mốc bắt đầu mức gia tốc thấp nếu đây là mẫu thấp đầu tiên.}
-\CodeExplainLine{4}{Yêu cầu điều kiện gia tốc thấp kéo dài ít nhất 120 ms để loại nhiễu tức thời.}
-\CodeExplainLine{5}{Chuyển máy trạng thái sang giai đoạn rơi tự do đã được xác nhận.}
-\CodeExplainLine{6}{Lưu thời điểm chuyển trạng thái để kiểm soát thời hạn của giai đoạn tiếp theo.}
-\CodeExplainLine{7}{Kết thúc khối xác nhận đủ thời gian gia tốc thấp.}
-\CodeExplainLine{8}{Đi vào nhánh này khi tổng gia tốc đã trở lại từ 0,45 g trở lên.}
-\CodeExplainLine{9}{Xóa mốc gia tốc thấp vì chuỗi rơi tự do không còn liên tục.}
-\CodeExplainLine{10}{Kết thúc phép kiểm tra rơi tự do.}
-\CodeExplainLine{11}{Kiểm tra xung va đập trực tiếp lớn hơn 2,8 g.}
-\CodeExplainLine{12}{Chuyển sang trạng thái va đập khi phát hiện xung mạnh.}
-\CodeExplainLine{13}{Lưu thời điểm va đập để bắt đầu cửa sổ kiểm tra bất động.}
-\CodeExplainLine{14}{Kết thúc nhánh phát hiện va đập trực tiếp.}
-\CodeExplainLine{15}{Thoát khỏi nhánh trạng thái bình thường của câu lệnh switch.}
-\CodeExplainLine{16}{Dòng trống phân tách hai trạng thái của máy trạng thái.}
-\CodeExplainLine{17}{Bắt đầu nhánh xử lý sau khi đã phát hiện va đập.}
-\CodeExplainLine{18}{Yêu cầu đã qua 1.800 ms và mức chuyển động nhỏ hơn 0,08 g.}
-\CodeExplainLine{19}{Đồng thời yêu cầu tư thế tĩnh có tổng gia tốc gần 1 g, trong khoảng 0,72--1,28 g.}
-\CodeExplainLine{20}{Chuyển sang cảnh báo té ngã khi toàn bộ điều kiện bất động đều đúng.}
-\CodeExplainLine{21}{Lưu thời điểm phát cảnh báo để phục vụ hiển thị, còi và thao tác hủy.}
-\CodeExplainLine{22}{Nếu sau 5 giây vẫn không đủ điều kiện bất động thì xem va đập là sự kiện giả.}
-\CodeExplainLine{23}{Đưa máy trạng thái về bình thường để tiếp tục giám sát.}
-\CodeExplainLine{24}{Kết thúc nhánh hết thời hạn chờ sau va đập.}
-\CodeExplainLine{25}{Thoát khỏi nhánh trạng thái va đập.}
-\end{codeexplanation}
 
 \subsection{Đếm bước}
 
@@ -118,52 +115,49 @@ case FALL_IMPACT:
 
 \Needspace{0.38\textheight}
 \begin{lstlisting}[style=firmware,caption={Lọc gia tốc động và xác nhận chuỗi bước}]
+(*@\VNCodeComment{Cập nhật thành phần trọng lực bằng bộ lọc thông thấp với hệ số 0,03.}@*)
 gravity += 0.03f * (totalG - gravity);
+(*@\VNCodeComment{Loại thành phần trọng lực khỏi tổng gia tốc để thu phần gia tốc do bước chân.}@*)
 float dynamicG = totalG - gravity;
+(*@\VNCodeComment{Lọc tiếp gia tốc động với hệ số 0,25 để giảm nhiễu cao tần.}@*)
 dynamicFiltered += 0.25f * (dynamicG - dynamicFiltered);
+(*@\VNCodeComment{Dòng trống phân tách bước lọc tín hiệu với bước phát hiện một chu kỳ bước.}@*)
 
+(*@\VNCodeComment{Mở cờ chờ đỉnh dương sau khi tín hiệu đã đi qua đáy âm nhỏ hơn -0,05 g.}@*)
 if (dynamicFiltered < -0.05f) peakArmed = true;
+(*@\VNCodeComment{Yêu cầu tín hiệu vượt đỉnh dương 0,11 g khi cờ chờ đã được mở.}@*)
 if (peakArmed && dynamicFiltered > 0.11f &&
+(*@\VNCodeComment{Giữ khoảng cách tối thiểu 280 ms giữa hai đỉnh và loại xung mạnh từ 1,8 g trở lên.}@*)
     now - lastPeakMs > 280 && totalG < 1.8f) {
+(*@\VNCodeComment{Tính khoảng giữa hai đỉnh; đặt bằng 0 nếu chưa từng có đỉnh trước đó.}@*)
   uint32_t interval = lastPeakMs == 0 ? 0 : now - lastPeakMs;
+(*@\VNCodeComment{Chấp nhận nhịp bước có chu kỳ từ 280 đến 1.800 ms.}@*)
   if (interval >= 280 && interval <= 1800) {
+(*@\VNCodeComment{Kiểm tra chuỗi đi bộ đã được xác nhận từ một cặp đỉnh trước hay chưa.}@*)
     if (walkingSequence) {
+(*@\VNCodeComment{Khi chuỗi đã hợp lệ, mỗi đỉnh mới làm tăng bộ đếm thêm một bước.}@*)
       stepCount++;
+(*@\VNCodeComment{Đi vào nhánh khởi tạo khi vừa thu được cặp đỉnh hợp lệ đầu tiên.}@*)
     } else {
+(*@\VNCodeComment{Cộng hai bước cùng lúc để bù cho đỉnh đầu tiên chưa được tính trước khi xác nhận chuỗi.}@*)
       stepCount += 2;
+(*@\VNCodeComment{Đánh dấu hệ thống đang trong một chuỗi đi bộ hợp lệ.}@*)
       walkingSequence = true;
+(*@\VNCodeComment{Kết thúc nhánh lựa chọn cách cộng bước.}@*)
     }
+(*@\VNCodeComment{Đi vào nhánh này khi khoảng đỉnh nằm ngoài miền nhịp bước cho phép.}@*)
   } else {
+(*@\VNCodeComment{Hủy trạng thái chuỗi đi bộ để lần kế tiếp phải xác nhận lại.}@*)
     walkingSequence = false;
+(*@\VNCodeComment{Kết thúc kiểm tra khoảng thời gian giữa hai đỉnh.}@*)
   }
+(*@\VNCodeComment{Lưu mốc đỉnh hiện tại cho phép tính khoảng đỉnh ở lần sau.}@*)
   lastPeakMs = now;
+(*@\VNCodeComment{Đóng cờ chờ đỉnh, buộc tín hiệu phải qua một đáy âm mới trước bước tiếp theo.}@*)
   peakArmed = false;
+(*@\VNCodeComment{Kết thúc điều kiện xác nhận đỉnh dương.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Cập nhật thành phần trọng lực bằng bộ lọc thông thấp với hệ số 0,03.}
-\CodeExplainLine{2}{Loại thành phần trọng lực khỏi tổng gia tốc để thu phần gia tốc do bước chân.}
-\CodeExplainLine{3}{Lọc tiếp gia tốc động với hệ số 0,25 để giảm nhiễu cao tần.}
-\CodeExplainLine{4}{Dòng trống phân tách bước lọc tín hiệu với bước phát hiện một chu kỳ bước.}
-\CodeExplainLine{5}{Mở cờ chờ đỉnh dương sau khi tín hiệu đã đi qua đáy âm nhỏ hơn -0,05 g.}
-\CodeExplainLine{6}{Yêu cầu tín hiệu vượt đỉnh dương 0,11 g khi cờ chờ đã được mở.}
-\CodeExplainLine{7}{Giữ khoảng cách tối thiểu 280 ms giữa hai đỉnh và loại xung mạnh từ 1,8 g trở lên.}
-\CodeExplainLine{8}{Tính khoảng giữa hai đỉnh; đặt bằng 0 nếu chưa từng có đỉnh trước đó.}
-\CodeExplainLine{9}{Chấp nhận nhịp bước có chu kỳ từ 280 đến 1.800 ms.}
-\CodeExplainLine{10}{Kiểm tra chuỗi đi bộ đã được xác nhận từ một cặp đỉnh trước hay chưa.}
-\CodeExplainLine{11}{Khi chuỗi đã hợp lệ, mỗi đỉnh mới làm tăng bộ đếm thêm một bước.}
-\CodeExplainLine{12}{Đi vào nhánh khởi tạo khi vừa thu được cặp đỉnh hợp lệ đầu tiên.}
-\CodeExplainLine{13}{Cộng hai bước cùng lúc để bù cho đỉnh đầu tiên chưa được tính trước khi xác nhận chuỗi.}
-\CodeExplainLine{14}{Đánh dấu hệ thống đang trong một chuỗi đi bộ hợp lệ.}
-\CodeExplainLine{15}{Kết thúc nhánh lựa chọn cách cộng bước.}
-\CodeExplainLine{16}{Đi vào nhánh này khi khoảng đỉnh nằm ngoài miền nhịp bước cho phép.}
-\CodeExplainLine{17}{Hủy trạng thái chuỗi đi bộ để lần kế tiếp phải xác nhận lại.}
-\CodeExplainLine{18}{Kết thúc kiểm tra khoảng thời gian giữa hai đỉnh.}
-\CodeExplainLine{19}{Lưu mốc đỉnh hiện tại cho phép tính khoảng đỉnh ở lần sau.}
-\CodeExplainLine{20}{Đóng cờ chờ đỉnh, buộc tín hiệu phải qua một đáy âm mới trước bước tiếp theo.}
-\CodeExplainLine{21}{Kết thúc điều kiện xác nhận đỉnh dương.}
-\end{codeexplanation}
 
 \section{Mô-đun định vị GPS}
 
@@ -192,40 +186,37 @@ và đổi dấu cho bán cầu Nam hoặc Tây. Vị trí chỉ được đánh
 
 \Needspace{0.34\textheight}
 \begin{lstlisting}[style=firmware,caption={Tính và kiểm tra checksum NMEA trước khi tách trường}]
+(*@\VNCodeComment{Khai báo hàm kiểm tra checksum và nhận chuỗi NMEA dạng ký tự làm đầu vào.}@*)
 bool NMEA_ChecksumOK(const char *sentence) {
+(*@\VNCodeComment{Loại con trỏ rỗng hoặc chuỗi không bắt đầu bằng ký tự đô-la theo chuẩn NMEA.}@*)
   if (!sentence || sentence[0] != '$') return false;
+(*@\VNCodeComment{Tìm dấu sao, vị trí phân cách phần dữ liệu với hai chữ số checksum.}@*)
   const char *star = strchr(sentence, '*');
+(*@\VNCodeComment{Loại câu không có dấu sao hoặc không đủ hai ký tự checksum phía sau.}@*)
   if (!star || strlen(star) < 3) return false;
+(*@\VNCodeComment{Đổi chữ số hexadecimal thứ nhất sau dấu sao thành bốn bit cao.}@*)
   int8_t high = NMEA_HexNibble(star[1]);
+(*@\VNCodeComment{Đổi chữ số hexadecimal thứ hai thành bốn bit thấp.}@*)
   int8_t low = NMEA_HexNibble(star[2]);
+(*@\VNCodeComment{Loại câu có một trong hai chữ số checksum không hợp lệ.}@*)
   if (high < 0 || low < 0) return false;
+(*@\VNCodeComment{Dòng trống phân tách bước đọc checksum nhận được với bước tự tính checksum.}@*)
 
+(*@\VNCodeComment{Khởi tạo biến checksum tính toán bằng 0.}@*)
   uint8_t checksum = 0;
+(*@\VNCodeComment{Duyệt các ký tự sau dấu đô-la và dừng ngay trước dấu sao.}@*)
   for (const char *p = sentence + 1; p < star; p++) {
+(*@\VNCodeComment{XOR từng byte vào biến tích lũy đúng theo quy tắc checksum NMEA.}@*)
     checksum ^= (uint8_t)*p;
+(*@\VNCodeComment{Kết thúc vòng lặp sau khi đã xử lý toàn bộ phần thân câu.}@*)
   }
+(*@\VNCodeComment{Ghép bốn bit cao và bốn bit thấp thành byte checksum nhận được.}@*)
   uint8_t expected = (uint8_t)((high << 4) | low);
+(*@\VNCodeComment{Chỉ chấp nhận câu khi checksum tự tính bằng checksum đi kèm.}@*)
   return checksum == expected;
+(*@\VNCodeComment{Kết thúc thân hàm.}@*)
 }
 \end{lstlisting}
-
-\begin{codeexplanation}
-\CodeExplainLine{1}{Khai báo hàm kiểm tra checksum và nhận chuỗi NMEA dạng ký tự làm đầu vào.}
-\CodeExplainLine{2}{Loại con trỏ rỗng hoặc chuỗi không bắt đầu bằng ký tự đô-la theo chuẩn NMEA.}
-\CodeExplainLine{3}{Tìm dấu sao, vị trí phân cách phần dữ liệu với hai chữ số checksum.}
-\CodeExplainLine{4}{Loại câu không có dấu sao hoặc không đủ hai ký tự checksum phía sau.}
-\CodeExplainLine{5}{Đổi chữ số hexadecimal thứ nhất sau dấu sao thành bốn bit cao.}
-\CodeExplainLine{6}{Đổi chữ số hexadecimal thứ hai thành bốn bit thấp.}
-\CodeExplainLine{7}{Loại câu có một trong hai chữ số checksum không hợp lệ.}
-\CodeExplainLine{8}{Dòng trống phân tách bước đọc checksum nhận được với bước tự tính checksum.}
-\CodeExplainLine{9}{Khởi tạo biến checksum tính toán bằng 0.}
-\CodeExplainLine{10}{Duyệt các ký tự sau dấu đô-la và dừng ngay trước dấu sao.}
-\CodeExplainLine{11}{XOR từng byte vào biến tích lũy đúng theo quy tắc checksum NMEA.}
-\CodeExplainLine{12}{Kết thúc vòng lặp sau khi đã xử lý toàn bộ phần thân câu.}
-\CodeExplainLine{13}{Ghép bốn bit cao và bốn bit thấp thành byte checksum nhận được.}
-\CodeExplainLine{14}{Chỉ chấp nhận câu khi checksum tự tính bằng checksum đi kèm.}
-\CodeExplainLine{15}{Kết thúc thân hàm.}
-\end{codeexplanation}
 
 \subsection{Trạng thái vận hành}
 

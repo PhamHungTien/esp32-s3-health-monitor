@@ -97,6 +97,7 @@
   keepspaces=true,
   showstringspaces=false,
   tabsize=2,
+  escapeinside={(*@}{@*)},
   xleftmargin=0.8em,
   framexleftmargin=0.5em,
   aboveskip=7pt,
@@ -104,36 +105,11 @@
   captionpos=b
 }
 
-% Bảng đặt ngay sau đoạn mã, dùng chung cho phần thuyết minh từng dòng.
-\newenvironment{codeexplanation}{%
-  \par\smallskip
-  \begingroup
-  \small
-  \setlength{\LTleft}{0pt}
-  \setlength{\LTright}{0pt}
-  \renewcommand{\arraystretch}{1.16}
-  \begin{longtable}{C{1.2cm} L{13.7cm}}
-    \multicolumn{2}{l}{\sffamily\bfseries\color{Secondary}Giải thích từng dòng}\tabularnewline[2pt]
-    \toprule
-    \textbf{Dòng} & \textbf{Ý nghĩa trong chương trình}\\
-    \midrule
-    \endfirsthead
-    \multicolumn{2}{l}{\sffamily\bfseries\color{Secondary}Giải thích từng dòng (tiếp theo)}\tabularnewline[2pt]
-    \toprule
-    \textbf{Dòng} & \textbf{Ý nghĩa trong chương trình}\\
-    \midrule
-    \endhead
-    \midrule
-    \multicolumn{2}{r}{\footnotesize\itshape Còn tiếp ở trang sau}\tabularnewline
-    \endfoot
-    \bottomrule
-    \endlastfoot
-}{%
-  \end{longtable}
-  \endgroup
-  \par\smallskip
+% Chú thích tiếng Việt được render bằng XeLaTeX ngay trong khung mã.
+\newcommand{\VNCodeComment}[1]{%
+  \parbox[t]{0.92\linewidth}{%
+    \raggedright\color{Success}\sffamily\itshape // #1}%
 }
-\newcommand{\CodeExplainLine}[2]{#1 & #2\\}
 
 \newcommand{\ProjectTitle}{THIẾT BỊ ĐEO THEO DÕI SỨC KHỎE, PHÁT HIỆN TÉ NGÃ VÀ ĐỊNH VỊ DÙNG ESP32-S3}
 \newcommand{\GroupMembers}{Phạm Hùng Tiến -- Hồ Sĩ Phú -- Quách Gia Thịnh}
