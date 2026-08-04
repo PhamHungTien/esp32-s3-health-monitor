@@ -120,6 +120,8 @@ OLED GPS states:
 
 The MAX30102 is configured for RED/IR acquisition at 100 samples per second. A slow estimator separates the DC component, while filtered AC samples are used for pulse detection. BPM is calculated from valid RR intervals. SpO2 is estimated from the normalized RED and IR AC/DC ratio and then bounded to the prototype's display range.
 
+After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. The latest BPM and SpO2 values are cached in RAM and shown immediately when the finger is placed again while a fresh measurement is being acquired.
+
 ### Step counting
 
 The acceleration magnitude is separated into gravity and dynamic components. A step is accepted only after a negative-to-positive threshold sequence, a valid peak interval, and an impact rejection check. The first isolated peak is held until a walking sequence is confirmed.
@@ -134,13 +136,14 @@ UART bytes are assembled into NMEA sentences. Each sentence must pass its XOR ch
 
 ## Verification
 
-The repository includes a lightweight host-side consistency test for the decision logic:
+The repository includes lightweight host-side consistency tests for the decision logic:
 
 ```bash
 python3 tests/algorithm_selfcheck.py
+python3 tests/ppg_retention_selfcheck.py
 ```
 
-The test uses only the Python standard library and mirrors the firmware thresholds. It checks algorithm behavior but does not replace measurements collected from real hardware.
+The tests use only the Python standard library and mirror the firmware thresholds. They check algorithm behavior but do not replace measurements collected from real hardware.
 
 ## Repository structure
 
@@ -151,7 +154,8 @@ The test uses only the Python standard library and mirrors the firmware threshol
 ├── reports_latex/                 # LaTeX source for group and individual reports
 ├── output/pdf/                    # Compiled submission-ready reports
 ├── tests/
-│   └── algorithm_selfcheck.py     # Host-side algorithm checks
+│   ├── algorithm_selfcheck.py     # Step-counting and fall-state checks
+│   └── ppg_retention_selfcheck.py # PPG display-retention checks
 └── README.md
 ```
 

@@ -58,15 +58,19 @@ struct PPGMetrics {
   bool fingerPresent;
   bool heartRateValid;
   bool spo2Valid;
+  bool cachedBpmAvailable;
+  bool cachedSpo2Available;
   float bpm;
   float spo2;
+  float cachedBpm;
+  float cachedSpo2;
   float signalQuality;
   uint32_t redRaw;
   uint32_t irRaw;
   uint32_t lastBeatMs;
 };
 
-PPGMetrics ppg = {false, false, false, 0.0f, 0.0f, 0.0f, 0, 0, 0};
+PPGMetrics ppg = {};
 
 struct PPGFilterState {
   float dcRed;
@@ -79,6 +83,8 @@ struct PPGFilterState {
   double irSquareSum;
   uint16_t windowSamples;
   uint32_t fingerStartMs;
+  uint32_t fingerReleaseStartMs;
+  bool replaceBpmOnNextInterval;
 };
 
 PPGFilterState ppgFilter = {};
@@ -478,6 +484,7 @@ void PPG_ResetMetrics() {
   ppg.fingerPresent = false;
   ppg.heartRateValid = false;
   ppg.spo2Valid = false;
+  // cachedBpm/cachedSpo2 được giữ lại để lần đặt tay kế tiếp có số hiển thị ngay.
   ppg.bpm = 0.0f;
   ppg.spo2 = 0.0f;
   ppg.signalQuality = 0.0f;
@@ -487,6 +494,7 @@ void PPG_ResetMetrics() {
 
 void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeMs) {
   PPGFilterState &state = ppgFilter;
+  constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
 
   ppg.redRaw = redValue;
   ppg.irRaw = irValue;
@@ -494,11 +502,24 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   // Hai ngưỡng khác nhau khi nhận và nhả tay giúp trạng thái không dao động.
   bool hasFinger = ppg.fingerPresent ? (irValue > 7000) : (irValue > 10000);
   if (!hasFinger) {
-    if (ppg.fingerPresent) PPG_ResetMetrics();
-    state.dcRed = redValue;
-    state.dcIr = irValue;
+    if (!ppg.fingerPresent) {
+      state.dcRed = redValue;
+      state.dcIr = irValue;
+      return;
+    }
+
+    // Không xóa số đo chỉ vì một vài mẫu bị hụt do ngón tay dịch chuyển.
+    if (state.fingerReleaseStartMs == 0) {
+      state.fingerReleaseStartMs = sampleTimeMs;
+    }
+    if (sampleTimeMs - state.fingerReleaseStartMs >= FINGER_RELEASE_CONFIRM_MS) {
+      PPG_ResetMetrics();
+      ppgFilter.dcRed = redValue;
+      ppgFilter.dcIr = irValue;
+    }
     return;
   }
+  state.fingerReleaseStartMs = 0;
 
   if (!ppg.fingerPresent) {
     ppg.fingerPresent = true;
@@ -545,13 +566,16 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
       uint32_t interval = now - ppg.lastBeatMs;
       if (interval >= 480 && interval <= 1500) {
         float instantBPM = 60000.0f / interval;
-        if (!ppg.heartRateValid) {
+        if (!ppg.heartRateValid || state.replaceBpmOnNextInterval) {
           // Khoảng RR hợp lệ đầu tiên được hiển thị ngay.
           ppg.bpm = instantBPM;
           ppg.heartRateValid = true;
+          state.replaceBpmOnNextInterval = false;
         } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
           ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
         }
+        ppg.cachedBpm = ppg.bpm;
+        ppg.cachedBpmAvailable = true;
       }
     }
     ppg.lastBeatMs = now;
@@ -560,7 +584,9 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   state.previousFiltered = state.filtered;
 
   if (ppg.lastBeatMs != 0 && now - ppg.lastBeatMs > 3000) {
-    ppg.heartRateValid = false;
+    // Giữ BPM gần nhất trên màn hình và bắt đầu lại việc tìm một cặp nhịp mới.
+    ppg.lastBeatMs = 0;
+    state.replaceBpmOnNextInterval = true;
   }
 
   // Tính ratio-of-ratios trên cửa sổ hai giây.
@@ -576,13 +602,16 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
       float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
       if (ratio > 0.2f && ratio < 2.0f) {
         float estimatedSpO2 = constrain(110.0f - 25.0f * ratio, 70.0f, 100.0f);
-        ppg.spo2 = ppg.spo2Valid ? (0.8f * ppg.spo2 + 0.2f * estimatedSpO2)
-                                  : estimatedSpO2;
-        // Chỉ công nhận kết quả sau khi thành phần DC ổn định.
-        ppg.spo2Valid = perfusion > 0.15f && state.fingerStartMs != 0 &&
-                        now - state.fingerStartMs > 4000;
-      } else {
-        ppg.spo2Valid = false;
+        // Chỉ cập nhật bằng cửa sổ đủ chất lượng; cửa sổ lỗi không xóa kết quả cũ.
+        bool estimateValid = perfusion > 0.15f && state.fingerStartMs != 0 &&
+                             now - state.fingerStartMs > 4000;
+        if (estimateValid) {
+          ppg.spo2 = ppg.spo2Valid ?
+                       (0.8f * ppg.spo2 + 0.2f * estimatedSpO2) : estimatedSpO2;
+          ppg.spo2Valid = true;
+          ppg.cachedSpo2 = ppg.spo2;
+          ppg.cachedSpo2Available = true;
+        }
       }
     }
     state.redSquareSum = state.irSquareSum = 0.0;
@@ -795,15 +824,21 @@ void OLED_RenderStatus() {
   OLED_DrawRect(66, 17, 61, 23);
   OLED_DrawText(19, 19, "BPM");
   OLED_DrawText(79, 19, "SPO2");
-  if (ppg.heartRateValid) {
-    snprintf(line, sizeof(line), "%3d", (int)(ppg.bpm + 0.5f));
+  bool showBpm = ppg.fingerPresent &&
+                 (ppg.heartRateValid || ppg.cachedBpmAvailable);
+  if (showBpm) {
+    float displayedBpm = ppg.heartRateValid ? ppg.bpm : ppg.cachedBpm;
+    snprintf(line, sizeof(line), "%3d", (int)(displayedBpm + 0.5f));
   } else {
     strcpy(line, ppg.fingerPresent ? "..." : " --");
   }
   OLED_DrawTextScaled(11, 26, line, 2);
 
-  if (ppg.spo2Valid) {
-    snprintf(line, sizeof(line), "%3d", (int)(ppg.spo2 + 0.5f));
+  bool showSpo2 = ppg.fingerPresent &&
+                  (ppg.spo2Valid || ppg.cachedSpo2Available);
+  if (showSpo2) {
+    float displayedSpo2 = ppg.spo2Valid ? ppg.spo2 : ppg.cachedSpo2;
+    snprintf(line, sizeof(line), "%3d", (int)(displayedSpo2 + 0.5f));
   } else {
     strcpy(line, ppg.fingerPresent ? "..." : " --");
   }
