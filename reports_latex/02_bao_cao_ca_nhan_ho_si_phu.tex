@@ -86,17 +86,17 @@ if (!ppg.fingerPresent) {
 
 \subsection{Thuật toán nhịp tim}
 
-Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,25 giây đầu, bộ lọc bám nhanh theo mức DC để loại xung lớn khi vừa đặt tay. Sau đó, bộ dò tự khóa vào cạnh dương hoặc cạnh âm xuất hiện đáng tin cậy đầu tiên và chỉ dùng lại đúng cực tính đó ở các chu kỳ sau. Cơ chế này tránh tình trạng không có BPM khi dạng sóng bị đảo bởi hướng cảm biến, áp lực ngón tay hoặc hình học quang; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
+Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,12 giây đầu, bộ lọc bám nhanh theo mức DC để giảm xung lớn khi vừa đặt tay. Sau đó, bộ dò ghi đồng thời mốc cạnh dương và cạnh âm; chỉ khi một phía hoàn thành khoảng RR hợp lệ thì cực tính đó mới được khóa cho phần còn lại của phiên đo. Cách làm này tránh khóa nhầm do nhiễu đầu phiên và vẫn hoạt động khi dạng sóng bị đảo hoặc không cân xứng; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
 
 \[
   \mathrm{BPM}=\frac{60\,000}{\Delta t_{\mathrm{ms}}}.
 \]
 
-Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mượt. Khoảng RR hợp lệ đầu tiên được hiển thị ngay, không chờ thêm nhiều nhịp; các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Bài thử tổng hợp xác nhận kết quả đầu tiên xuất hiện trong 1,9 giây; thời gian thực tế vẫn phụ thuộc nhịp tim, mức tưới máu, chuyển động và cách che cảm biến.
+Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mượt. Khoảng RR hợp lệ đầu tiên được hiển thị ngay, không chờ thêm nhiều nhịp; các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Với tín hiệu tổng hợp 75 BPM, kết quả đầu tiên xuất hiện không quá 1,75 giây. Thời gian thực tế vẫn phụ thuộc pha sóng lúc đặt tay, nhịp tim, mức tưới máu, chuyển động và cách che cảm biến; BPM thật không thể có trước khi quan sát đủ một chu kỳ mạch.
 
 \subsection{\texorpdfstring{Ước lượng SpO$_2$}{Ước lượng SpO2}}
 
-Trong mỗi cửa sổ một giây gồm 100 mẫu, em tính thành phần DC và độ mạnh AC của hai kênh. Cửa sổ đầu tiên được xét từ mốc 1,2 giây sau khi nhận ngón tay; SpO$_2$ chỉ xuất khi BPM đã hợp lệ để loại lần chạm hoặc chuyển động không có nhịp. Vì vậy kết quả thường xuất hiện tại cửa sổ một hoặc hai, nhanh hơn thời gian chờ hơn bốn giây trước đây. Tỷ số chuẩn hóa được xác định bởi:
+Trong mỗi cửa sổ 64 mẫu, em tính thành phần DC và độ mạnh AC của hai kênh. Sau 0,12 giây bám nền, cửa sổ đầu tiên hoàn tất ở khoảng 0,76 giây kể từ khi nhận ngón tay. SpO$_2$ được xét độc lập với cờ BPM vì tỷ số quang có điều kiện hợp lệ riêng; kết quả chỉ được công nhận khi biên độ AC, mức tưới máu và tỷ số RED/IR đều đạt ngưỡng. Tỷ số chuẩn hóa được xác định bởi:
 
 \[
  R=\frac{AC_{RED}/DC_{RED}}{AC_{IR}/DC_{IR}},
@@ -115,7 +115,7 @@ Giá trị SpO$_2$ hiện là ước lượng phục vụ đồ án, chưa phả
 
 \subsection{Xác nhận nhịp và khởi tạo BPM}
 
-Bộ dò sử dụng cạnh vượt ngưỡng theo biên độ tín hiệu và khoảng trơ 280 ms. Khoảng RR hợp lệ đầu tiên được xuất ngay; các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
+Bộ dò sử dụng cạnh vượt ngưỡng theo biên độ tín hiệu và khoảng trơ 280 ms. Trong giai đoạn chưa khóa, hai cực tính được theo dõi song song; khoảng RR hợp lệ đầu tiên được xuất ngay, còn các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
 
 \Needspace{0.34\textheight}
 \begin{lstlisting}[style=firmware,caption={Điều kiện phát hiện nhịp và hiển thị BPM sớm}]
@@ -126,22 +126,18 @@ bool crossedPositive = state.previousFiltered <= peakThreshold &&
                        state.filtered > peakThreshold;
 bool crossedNegative = state.previousFiltered >= -peakThreshold &&
                        state.filtered < -peakThreshold;
-(*@\VNCodeComment{Sau lần khóa đầu, chỉ dùng lại đúng cực tính để mỗi chu kỳ có một mốc ổn định.}@*)
-bool crossed = state.pulsePolarity == 0 ?
-                 (crossedPositive || crossedNegative) :
-                 (state.pulsePolarity > 0 ? crossedPositive : crossedNegative);
-(*@\VNCodeComment{Khoảng trơ 280 ms ngăn một chu kỳ tạo ra nhiều mốc nhịp.}@*)
-if (state.beatArmed && crossed &&
-    (ppg.lastBeatMs == 0 || now - ppg.lastBeatMs > 280)) {
-(*@\VNCodeComment{Ghi nhớ cực tính ở nhịp đầu để các nhịp sau không đổi cạnh giữa chừng.}@*)
-  if (state.pulsePolarity == 0)
-    state.pulsePolarity = crossedPositive ? 1 : -1;
-  uint32_t interval = now - ppg.lastBeatMs;
-(*@\VNCodeComment{Khoảng RR đầu tiên trong miền 40--180 BPM được xuất ngay lên giao diện.}@*)
-  if (ppg.lastBeatMs != 0 && interval >= 333 && interval <= 1500) {
+(*@\VNCodeComment{Khi chưa khóa cực tính, lưu riêng thời điểm cạnh dương và cạnh âm.}@*)
+if (state.pulsePolarity == 0 && crossedPositive) {
+  uint32_t interval = now - state.positiveEdgeMs;
+(*@\VNCodeComment{Chỉ khóa cạnh dương khi hai mốc tạo thành một khoảng RR hợp lệ.}@*)
+  if (state.positiveEdgeMs != 0 && interval >= 333 && interval <= 1500) {
+    state.pulsePolarity = 1;
+(*@\VNCodeComment{Xuất BPM ngay từ khoảng RR đầu tiên, không chờ thêm chu kỳ làm mượt.}@*)
     ppg.bpm = 60000.0f / interval;
     ppg.heartRateValid = true;
   }
+(*@\VNCodeComment{Cập nhật mốc cạnh dương để chuẩn bị so sánh chu kỳ kế tiếp.}@*)
+  state.positiveEdgeMs = now;
 }
 \end{lstlisting}
 
@@ -211,7 +207,7 @@ Hợp đồng dữ liệu và kiểm tra dashboard & 3 giờ & Trường JSON v�
 Không đặt ngón tay & IR khoảng 330--400; BPM/SpO$_2$ ở WAIT & \OK\\
 Đặt ngón tay ổn định & IR khoảng 132.000--137.000 & Nhận diện biên độ rõ\\
 Sau thời gian hội tụ & BPM khoảng 72--83 qua các lần thử & \OK\\
-Thời gian xuất kết quả tổng hợp & BPM đầu tiên không quá 1,9 giây; SpO$_2$ được xét từ 1,2 giây sau khi BPM hợp lệ & \OK\\
+Thời gian xuất kết quả tổng hợp & BPM 75 BPM không quá 1,75 giây; SpO$_2$ được xét từ khoảng 0,76 giây và không chờ BPM & \OK\\
 Dạng sóng đảo cực tính & Bộ dò tự khóa cạnh dương hoặc âm và vẫn tính đúng BPM & \OK\\
 Ước lượng SpO$_2$ thử nghiệm & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\

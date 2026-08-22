@@ -22,25 +22,35 @@
 \setbeamercolor{frametitle}{fg=Ink,bg=Paper}
 \setbeamercolor{structure}{fg=Ink}
 \setbeamercolor{alerted text}{fg=Ink}
+\setbeamercolor{footer}{fg=Gray,bg=Paper}
+\setbeamercolor{pagenumber}{fg=white,bg=Ink}
+\setbeamerfont{frametitle}{size=\fontsize{19}{22}\selectfont,series=\bfseries}
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{itemize item}{\raise0.15ex\hbox{\rule{0.7ex}{0.7ex}}}
 \setbeamertemplate{itemize subitem}{\raise0.15ex\hbox{\rule{0.55ex}{0.55ex}}}
 \setbeamertemplate{frametitle}{%
-  \vspace{0.35cm}\insertframetitle\par\vspace{0.12cm}%
-  \color{Ink}\rule{\textwidth}{0.6pt}}
+  \vspace{0.32cm}\insertframetitle\par\vspace{0.15cm}%
+  \color{Ink}\rule{0.12\textwidth}{2.2pt}\hspace{1.5mm}\color{LightGray}\rule{0.865\textwidth}{0.7pt}}
 \setbeamertemplate{footline}{%
-  \hspace{0.55cm}\color{Gray}\scriptsize ĐỒ ÁN ESP32-S3\hfill
-  \insertframenumber/\inserttotalframenumber\hspace{0.55cm}\vspace{0.22cm}}
+  \leavevmode\hbox{%
+    \begin{beamercolorbox}[wd=0.88\paperwidth,ht=2.7ex,dp=1.15ex,leftskip=0.7cm]{footer}%
+      \scriptsize\bfseries ĐỒ ÁN ESP32-S3\hspace{2mm}\color{LightGray}\rule{0.64\paperwidth}{0.5pt}%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=0.115\paperwidth,ht=2.7ex,dp=1.15ex,center]{pagenumber}%
+      \tiny\bfseries\insertframenumber/\inserttotalframenumber
+    \end{beamercolorbox}}}
 \setbeamersize{text margin left=0.7cm,text margin right=0.7cm}
 
 \newcommand{\muted}[1]{{\color{Gray}#1}}
 \newcommand{\bigmetric}[2]{%
   \begin{minipage}[t]{0.22\textwidth}\centering
-    {\fontsize{27}{29}\selectfont\bfseries #1}\par\vspace{1mm}
+    {\fontsize{24}{26}\selectfont\bfseries #1}\par\vspace{1mm}
     {\small\color{Gray}#2}
   \end{minipage}}
 \newcommand{\statusbox}[2]{%
   \fcolorbox{Ink}{white}{\parbox[c][0.72cm][c]{0.205\textwidth}{\centering\scriptsize\bfseries #1\\[-1mm]\tiny\color{Gray}#2}}}
+\newcommand{\flowstate}[2]{%
+  \fcolorbox{Ink}{white}{\parbox[c][0.52cm][c]{0.29\textwidth}{\centering\scriptsize\bfseries #1\\[-0.8mm]\tiny\color{Gray}#2}}}
 
 \lstdefinestyle{slidecode}{
   language=C++,
@@ -82,16 +92,15 @@
   \vfill
   {\normalsize\bfseries\insertauthor}\par\vspace{1mm}
   \muted{Thành phố Hồ Chí Minh -- \insertdate}
-  \vspace{3mm}\par\color{Ink}\rule{0.42\textwidth}{2.2pt}
+  \vspace{3mm}\par\color{Ink}\rule{0.18\textwidth}{3pt}\hspace{1.5mm}\color{LightGray}\rule{0.22\textwidth}{1pt}
 \end{frame}
 
 \begin{frame}{Một nền tảng hợp nhất các chức năng của thiết bị đeo}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.42\textwidth}
-      \vspace{2mm}
-      {\Large\bfseries ESP32-S3 điều phối dữ liệu sức khỏe, chuyển động, vị trí và hai lớp giao diện.}
-      \vspace{5mm}
-      \begin{itemize}\setlength\itemsep{3mm}
+      {\large\bfseries ESP32-S3 điều phối dữ liệu sức khỏe, chuyển động, vị trí và hai lớp giao diện.}
+      \vspace{3mm}
+      \begin{itemize}\setlength\itemsep{2mm}
         \item Nhịp tim và SpO$_2$ từ MAX30102
         \item Đếm bước, phát hiện té ngã từ IMU
         \item GPS, OLED, buzzer và dashboard Wi-Fi
@@ -100,10 +109,10 @@
     \begin{column}{0.55\textwidth}
       \centering
       \begin{tabular}{cc}
-        \includegraphics[width=0.23\textwidth,height=2.5cm,keepaspectratio]{../reports_latex/assets/components/esp32s3_freenove.jpg} &
-        \includegraphics[width=0.23\textwidth,height=2.5cm,keepaspectratio]{../reports_latex/assets/components/oled_ssd1306.jpg}\\[2mm]
-        \includegraphics[width=0.23\textwidth,height=2.2cm,keepaspectratio]{../reports_latex/assets/components/max30102_board_overview.jpg} &
-        \includegraphics[width=0.23\textwidth,height=2.2cm,keepaspectratio]{../reports_latex/assets/components/gps_neo6m_reference.jpg}
+        \includegraphics[width=0.22\textwidth,height=2.1cm,keepaspectratio]{../reports_latex/assets/components/esp32s3_freenove.jpg} &
+        \includegraphics[width=0.22\textwidth,height=2.1cm,keepaspectratio]{../reports_latex/assets/components/oled_ssd1306.jpg}\\[1mm]
+        \includegraphics[width=0.22\textwidth,height=1.9cm,keepaspectratio]{../reports_latex/assets/components/max30102_board_overview.jpg} &
+        \includegraphics[width=0.22\textwidth,height=1.9cm,keepaspectratio]{../reports_latex/assets/components/gps_neo6m_reference.jpg}
       \end{tabular}
     \end{column}
   \end{columns}
@@ -116,16 +125,17 @@
       \begin{itemize}\setlength\itemsep{3mm}
         \item ESP32-S3 tự phát mạng, không cần router hay Internet
         \item Captive portal và dashboard responsive cho điện thoại/laptop
-        \item API JSON cập nhật mỗi giây, không chặn vòng lặp cảm biến
+        \item API JSON cập nhật mỗi 0,5 giây, không chặn vòng lặp cảm biến
         \item Đặt lại số bước và hủy cảnh báo ngay trên web
       \end{itemize}
     \end{column}
     \begin{column}{0.44\textwidth}
-      \fcolorbox{Ink}{white}{\parbox{0.92\linewidth}{
-        \centering\vspace{3mm}
-        \muted{TÊN WI-FI}\par{\LARGE\bfseries health-monitor}\par\vspace{4mm}
-        \muted{MẬT KHẨU}\par{\LARGE\bfseries 99999999}\par\vspace{4mm}
-        \muted{TRUY CẬP}\par{\Large\bfseries 192.168.4.1}\vspace{3mm}}}
+      \fcolorbox{Ink}{Ink}{\parbox{0.92\linewidth}{
+        \centering\color{white}\vspace{3mm}
+        {\scriptsize\bfseries KẾT NỐI TRONG MẠNG CỤC BỘ}\par\vspace{3mm}
+        {\scriptsize\color{LightGray}TÊN WI-FI}\par{\LARGE\bfseries health-monitor}\par\vspace{3mm}
+        {\scriptsize\color{LightGray}MẬT KHẨU}\par{\LARGE\bfseries 99999999}\par\vspace{3mm}
+        {\scriptsize\color{LightGray}ĐỊA CHỈ}\par{\Large\bfseries 192.168.4.1}\vspace{3mm}}}
     \end{column}
   \end{columns}
 \end{frame}
@@ -171,25 +181,23 @@
 
 \begin{frame}{Vòng lặp không chặn giữ dữ liệu và web hoạt động đồng thời}
   \centering
-  \resizebox{!}{4.75cm}{%
+  \vspace{3mm}
   \begin{tikzpicture}[
-    p/.style={draw=Ink,rounded corners=1mm,fill=white,minimum width=34mm,minimum height=8mm,align=center,font=\scriptsize},
-    q/.style={draw=Ink,diamond,aspect=2.3,fill=LightGray,inner sep=1mm,align=center,font=\small},
-    a/.style={-{Latex[length=2mm]},thick}
+    p/.style={draw=Ink,rounded corners=1mm,fill=white,minimum width=31mm,minimum height=14mm,align=center,font=\small},
+    a/.style={-{Latex[length=2mm]},thick},node distance=7mm
   ]
-    \node[p] (start) {Bắt đầu \texttt{loop()}};
-    \node[p,below=4mm of start] (http) {DNS + HTTP\\đang chờ};
-    \node[p,below=4mm of http] (read) {Đọc GPS\\Rút FIFO PPG};
-    \node[q,below=5mm of read] (due) {Đến mốc\\tác vụ?};
-    \node[p,below=5mm of due] (task) {IMU, OLED, buzzer, log};
-    \node[p,right=18mm of due] (recover) {Phục hồi\\thiết bị};
-    \draw[a] (start)--(http); \draw[a] (http)--(read); \draw[a] (read)--(due);
-    \draw[a] (due)--node[left,font=\scriptsize]{Có}(task);
-    \draw[a] (due)--node[above,font=\scriptsize]{Không}(recover);
-    \draw[a] (task.east)-|(recover.south); \draw[a] (recover.north)|-(start.east);
+    \node[p] (http) {DNS + HTTP\\không chờ};
+    \node[p,right=of http] (read) {GPS liên tục\\FIFO PPG};
+    \node[p,right=of read,fill=LightGray] (task) {Tác vụ theo mốc\\IMU, OLED, log};
+    \node[p,right=of task] (recover) {Kiểm tra lỗi\\và phục hồi};
+    \draw[a] (http)--(read); \draw[a] (read)--(task); \draw[a] (task)--(recover);
+    \draw[a] (recover.south) -- ++(0,-8mm) -| (http.south);
   \end{tikzpicture}
-  }
-  \vspace{2mm}\par\small\bfseries Không dùng trì hoãn dài: dashboard cập nhật 1 Hz trong khi PPG vẫn lấy mẫu 100 Hz.
+  \vspace{6mm}\par
+  \bigmetric{100 Hz}{PPG}\hfill
+  \bigmetric{10 Hz}{OLED}\hfill
+  \bigmetric{2 Hz}{Dashboard}
+  \vspace{2mm}\par\muted{Ba nhịp thời gian cùng chạy mà không dùng trì hoãn dài.}
 \end{frame}
 
 \begin{frame}{PPG chuyển RED/IR thành BPM có kiểm soát chất lượng}
@@ -204,7 +212,7 @@
   \bigmetric{72--83}{BPM quan sát}\hfill
   \bigmetric{90--96\%}{SpO$_2$ nguyên mẫu}\hfill
   \bigmetric{100 Hz}{Tốc độ lấy mẫu}\hfill
-  \bigmetric{1 giây}{Cửa sổ tỷ số}
+  \bigmetric{0,76 s}{SpO$_2$ sớm nhất}
   \vspace{5mm}\par
   \fcolorbox{Ink}{white}{\parbox{0.91\textwidth}{\centering\bfseries SpO$_2$ chưa hiệu chuẩn bằng thiết bị y tế tham chiếu.}}
 \end{frame}
@@ -212,8 +220,9 @@
 \begin{frame}{IMU phục vụ đếm bước và máy trạng thái té ngã}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.47\textwidth}
-      {\Large\bfseries Đếm bước}\par\vspace{3mm}
-      \begin{itemize}\setlength\itemsep{2.5mm}
+      {\large\bfseries Đếm bước}\par\vspace{2mm}
+      \small
+      \begin{itemize}\setlength\itemsep{1.5mm}
         \item Tách trọng lực và gia tốc động
         \item Xác nhận đáy âm rồi đỉnh $>0{,}11g$
         \item Chu kỳ hợp lệ 280--1.800 ms
@@ -221,13 +230,13 @@
       \end{itemize}
     \end{column}
     \begin{column}{0.50\textwidth}
-      {\Large\bfseries Phát hiện té ngã}\par\vspace{6mm}
+      {\large\bfseries Phát hiện té ngã}\par\vspace{1mm}
       \centering
-      \statusbox{NORMAL}{Theo dõi}\hfill
-      \statusbox{FREEFALL}{$<0{,}45g$}\par\vspace{3mm}
-      \statusbox{IMPACT}{Va đập mạnh}\hfill
-      \statusbox{ALERT}{Ít chuyển động}
-      \vspace{4mm}\par\muted{Chuỗi thiếu điều kiện sẽ quay về NORMAL.}
+      \flowstate{NORMAL}{Theo dõi}\par$\downarrow$\par
+      \flowstate{FREEFALL}{$<0{,}45g$}\par$\downarrow$\par
+      \flowstate{IMPACT}{Va đập mạnh}\par$\downarrow$\par
+      \flowstate{ALERT}{Ít chuyển động}
+      \vspace{1mm}\par\tiny\muted{Thiếu điều kiện: quay về NORMAL.}
     \end{column}
   \end{columns}
 \end{frame}
@@ -262,19 +271,19 @@ return checksum == expected;
 
 \begin{frame}{Dashboard hiển thị toàn bộ trạng thái trên một màn hình}
   \centering
-  \includegraphics[width=0.93\textwidth,height=6.1cm,keepaspectratio]{../reports_latex/assets/web/dashboard_preview.png}
-  \vspace{-1mm}\par\tiny\muted{Bản render dùng dữ liệu minh họa; khi chạy thật, giao diện lấy JSON từ ESP32-S3 mỗi giây.}
+  \includegraphics[width=0.90\textwidth,height=5.25cm,keepaspectratio]{../reports_latex/assets/web/dashboard_preview.png}
+  \vspace{-1mm}\par\tiny\muted{Bản render dùng dữ liệu minh họa; khi chạy thật, giao diện lấy JSON từ ESP32-S3 mỗi 0,5 giây.}
 \end{frame}
 
-\begin{frame}{Giao diện web dùng tài nguyên nhúng và API gọn}
+\begin{frame}{Luồng dữ liệu từ cảm biến đến dashboard}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.48\textwidth}
-      {\Large\bfseries Luồng dữ liệu}\par\vspace{3mm}
+      {\Large\bfseries Luồng cập nhật}\par\vspace{3mm}
       \small
       \begin{enumerate}\setlength\itemsep{1.5mm}
         \item Firmware cập nhật trạng thái dùng chung
         \item \texttt{/api/status} tạo JSON khi có yêu cầu
-        \item JavaScript cập nhật thẻ số đo mỗi giây
+        \item JavaScript cập nhật thẻ số đo mỗi 0,5 giây
         \item POST đặt lại bước hoặc hủy ALERT
       \end{enumerate}
     \end{column}
@@ -290,74 +299,8 @@ return checksum == expected;
       \end{tabularx}
     \end{column}
   \end{columns}
-  \vspace{3mm}\par
-  \fcolorbox{Ink}{LightGray}{\parbox{0.94\textwidth}{\centering Không WebServer/DNSServer, CDN hay cloud; parser HTTP, định tuyến, JSON và phản hồi DNS đều do nhóm tự viết.}}
-\end{frame}
-
-\begin{frame}{Kết quả tích hợp đã đạt, độ chính xác vẫn cần đối chứng}
-  \centering
-  \bigmetric{3}{thiết bị I2C}\hfill
-  \bigmetric{4}{vệ tinh lần FIX cuối}\hfill
-  \bigmetric{7.000+}{byte NMEA}\hfill
-  \bigmetric{1 Hz}{cập nhật web}
-  \vspace{7mm}
-  \small
-  \begin{tabularx}{\textwidth}{>{\bfseries}l X >{\bfseries}r}
-    \toprule
-    Phép thử & Quan sát & Đánh giá\\
-    \midrule
-    I2C/IMU & 0x3C, 0x57, 0x68; gia tốc nghỉ 1,07--1,08$g$ & Đạt\\
-    Nhịp tim & 72--83 BPM qua các lần thử & Đạt\\
-    GPS & FIX, có tọa độ; hơn 7.000 byte NMEA & Đạt\\
-    Wi-Fi web & AP, captive portal, dashboard và API phản hồi & Đã cài đặt\\
-    SpO$_2$/đi bộ/té ngã thật & Cần dữ liệu đối chứng và quy trình an toàn & Cần thử\\
-    \bottomrule
-  \end{tabularx}
-\end{frame}
-
-\begin{frame}{Phân công cân bằng theo ba khối kỹ thuật}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.32\textwidth}\centering
-      {\large\bfseries PHẠM HÙNG TIẾN}\par\vspace{3mm}{\fontsize{25}{27}\selectfont\bfseries 33,4\%}\par\vspace{4mm}
-      \small Tích hợp, I2C/OLED, Wi-Fi AP, HTTP/DNS tự viết, khung dashboard, lịch chạy và kiểm thử tổng
-    \end{column}
-    \begin{column}{0.32\textwidth}\centering
-      {\large\bfseries HỒ SĨ PHÚ}\par\vspace{3mm}{\fontsize{25}{27}\selectfont\bfseries 33,3\%}\par\vspace{4mm}
-      \small MAX30102/PPG, BPM, SpO$_2$, chất lượng và hợp đồng dữ liệu PPG cho web
-    \end{column}
-    \begin{column}{0.32\textwidth}\centering
-      {\large\bfseries QUÁCH GIA THỊNH}\par\vspace{3mm}{\fontsize{25}{27}\selectfont\bfseries 33,3\%}\par\vspace{4mm}
-      \small IMU/GPS, té ngã, dữ liệu vị trí/chuyển động và thao tác điều khiển web
-    \end{column}
-  \end{columns}
-  \vspace{9mm}\par\centering\Large\bfseries Mỗi thành viên 30 giờ; tích hợp trên cùng một firmware.
-\end{frame}
-
-\begin{frame}{Kiến trúc đã hoàn chỉnh; bước tiếp theo là độ tin cậy}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.48\textwidth}
-      {\Large\bfseries Giới hạn hiện tại}\par\vspace{3mm}
-      \small
-      \begin{itemize}\setlength\itemsep{1.5mm}
-        \item SpO$_2$ chưa hiệu chuẩn y tế
-        \item Đếm bước và té ngã cần thử thực tế
-        \item Wi-Fi dùng mật khẩu chung, chưa có HTTPS/phân quyền
-        \item Chưa có pin, vỏ đeo và truyền tin từ xa
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      {\Large\bfseries Hướng phát triển}\par\vspace{3mm}
-      \small
-      \begin{itemize}\setlength\itemsep{1.5mm}
-        \item Hiệu chuẩn và thu dữ liệu đối chứng
-        \item SOS/hủy vật lý, động cơ rung
-        \item Xác thực web, lịch sử đo
-        \item BLE/Wi-Fi STA/LTE, PCB và vỏ đeo
-      \end{itemize}
-    \end{column}
-  \end{columns}
-  \vspace{4mm}
-  \fcolorbox{Ink}{Ink}{\parbox{0.94\textwidth}{\centering\color{white}\normalsize\bfseries ESP32-S3 đã điều phối cảm biến, OLED và web trong một hệ thống thống nhất; sản phẩm thực tế cần hiệu chuẩn, bảo mật và kiểm thử an toàn.}}
+  \vspace{1mm}\par
+  \fcolorbox{Ink}{Ink}{\parbox{0.92\textwidth}{\centering\color{white}\small\bfseries Một ESP32-S3 duy trì PPG 100 Hz và dashboard 2 Hz; HTTP, DNS, JSON cùng toàn bộ giao diện đều do nhóm tự viết và lưu trong flash.}}
 \end{frame}
 
 \end{document}

@@ -16,8 +16,8 @@ The sensor drivers, display routines, signal processing, fall-detection state ma
 ## Features
 
 - Heart-rate measurement from MAX30102 infrared PPG samples.
-- Immediate BPM output after the first valid RR interval; the synthetic low-perfusion test produces its first result within 1.9 seconds.
-- Experimental SpO2 estimation using a one-second RED/IR ratio-of-ratios window, eligible from about 1.2 seconds after finger detection.
+- Immediate BPM output after the first valid RR interval; both signal polarities are tracked until one produces a reliable period, and the 75 BPM synthetic test reports within 1.75 seconds.
+- Experimental SpO2 estimation from a 64-sample RED/IR ratio-of-ratios window, eligible from about 0.76 seconds after finger detection and independent of BPM validity.
 - Finger-presence detection with separate activation and release thresholds.
 - Step counting from filtered three-axis acceleration.
 - Fall detection using a `NORMAL -> FREE_FALL -> IMPACT -> ALERT` state machine.
@@ -113,7 +113,7 @@ The ESP32-S3 creates a local access point; no router or Internet connection is r
 | Dashboard | `http://192.168.4.1` |
 | Live data API | `http://192.168.4.1/api/status` |
 
-After joining the network, the phone may open the captive dashboard automatically. If it does not, open `http://192.168.4.1` manually. The page updates once per second and displays BPM, experimental SpO2, PPG quality, raw IR, steps, fall state, acceleration, module health, GPS state, satellites, coordinates, uptime, and connected-client count.
+After joining the network, the phone may open the captive dashboard automatically. If it does not, open `http://192.168.4.1` manually. The page updates twice per second and displays BPM, experimental SpO2, PPG quality, raw IR, steps, fall state, acceleration, module health, GPS state, satellites, coordinates, uptime, and connected-client count. The interface uses a compact two-level layout so the four primary readings remain visible before the technical details.
 
 The dashboard also provides local controls to reset the step count and cancel a fall alert. These controls are available only to clients connected to the device access point.
 
@@ -122,7 +122,7 @@ The dashboard also provides local controls to reset the step count and cancel a 
 1. Keep the device still during startup.
 2. Place a fingertip steadily over the MAX30102 LEDs and photodiode.
 3. Keep the finger still; the first valid BPM is displayed after one complete RR interval.
-4. The first SpO2 estimate becomes eligible from about 1.2 seconds after finger detection.
+4. The first SpO2 estimate becomes eligible after the initial 64-sample window, about 0.76 seconds after finger detection.
 5. Move the GPS antenna to an open outdoor area for faster satellite acquisition.
 6. Check the OLED and Serial Monitor for sensor, GPS, step, and fall-state information.
 7. Join the `health-monitor` Wi-Fi network using password `99999999`, then open `http://192.168.4.1` for the full dashboard.
@@ -138,7 +138,7 @@ OLED GPS states:
 
 ### Heart rate and SpO2
 
-The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-bit conversion, a 4096 nA ADC range, and approximately 8.6 mA on each LED. A fast 250 ms settling stage estimates the DC component. The adaptive beat detector automatically locks to the first reliable positive or negative threshold-crossing polarity, then timestamps the same phase on every pulse. This avoids failure when the waveform is inverted by sensor orientation, finger pressure, or optical geometry. BPM is shown after the first valid RR interval in the 40--180 BPM range. SpO2 is estimated from a one-second normalized RED and IR AC/DC window, becomes eligible after BPM is valid and at least 1.2 seconds have elapsed, and remains an uncalibrated prototype value.
+The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-bit conversion, a 4096 nA ADC range, and approximately 8.6 mA on each LED. A 120 ms settling stage estimates the DC component. Before choosing a waveform polarity, the detector timestamps positive and negative threshold crossings in parallel; it locks only after either side completes a valid RR interval. This prevents startup noise from selecting the wrong edge and improves recovery for inverted or asymmetric waveforms. BPM is shown after the first valid RR interval in the 40--180 BPM range. SpO2 uses a 64-sample normalized RED/IR AC/DC window and is evaluated independently of BPM from about 0.76 seconds after finger contact. It remains an uncalibrated prototype value.
 
 After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. Results are never carried into the next finger-contact session, preventing a new user from seeing the previous user's measurements.
 

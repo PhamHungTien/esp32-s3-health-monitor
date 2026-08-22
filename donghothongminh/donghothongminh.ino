@@ -102,6 +102,8 @@ struct PPGFilterState {
   bool beatArmed;
   bool replaceBpmOnNextInterval;
   int8_t pulsePolarity;
+  uint32_t positiveEdgeMs;
+  uint32_t negativeEdgeMs;
 };
 
 PPGFilterState ppgFilter = {};
@@ -511,7 +513,7 @@ void PPG_ResetMetrics() {
 
 void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeMs) {
   PPGFilterState &state = ppgFilter;
-  constexpr uint32_t PPG_SETTLE_MS = 250;
+  constexpr uint32_t PPG_SETTLE_MS = 120;
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;
@@ -578,7 +580,8 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   state.irSquareSum += (double)irAC * irAC;
   state.windowSamples++;
 
-  // Tự nhận cực tính vì dạng sóng có thể đảo theo vị trí và áp lực ngón tay.
+  // Theo dõi đồng thời hai cực tính. Chỉ khóa cực tính sau khi một phía tạo
+  // được khoảng RR hợp lệ, tránh trường hợp nhiễu đầu phiên làm khóa nhầm.
   float slope = state.filtered - state.previousFiltered;
   // Ngưỡng thích nghi thấp giúp nhận mạch yếu nhưng vẫn cao hơn nhiễu nền.
   float peakThreshold = state.envelope * 0.55f;
@@ -588,25 +591,53 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
                          state.filtered > peakThreshold;
   bool crossedNegative = state.previousFiltered >= -peakThreshold &&
                          state.filtered < -peakThreshold;
-  if (state.pulsePolarity == 0 && fabsf(state.filtered) < peakThreshold * 0.25f) {
+  if (state.pulsePolarity == 0 && fabsf(state.filtered) < peakThreshold * 0.35f) {
     state.beatArmed = true;
   } else if (state.pulsePolarity > 0 &&
-             state.filtered < -peakThreshold * 0.45f) {
+             state.filtered < peakThreshold * 0.10f) {
     state.beatArmed = true;
   } else if (state.pulsePolarity < 0 &&
-             state.filtered > peakThreshold * 0.45f) {
+             state.filtered > -peakThreshold * 0.10f) {
     state.beatArmed = true;
   }
 
-  bool crossedSelectedEdge = state.pulsePolarity == 0 ?
-                               (crossedPositive || crossedNegative) :
-                               (state.pulsePolarity > 0 ? crossedPositive :
-                                                        crossedNegative);
+  // Khi chưa biết cực tính, lưu mốc của cả cạnh dương và cạnh âm. Cạnh nào
+  // hoàn thành một chu kỳ hợp lệ trước sẽ được dùng cho toàn bộ phiên đo.
+  if (state.pulsePolarity == 0) {
+    if (crossedPositive) {
+      if (state.positiveEdgeMs != 0) {
+        uint32_t interval = now - state.positiveEdgeMs;
+        if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
+          state.pulsePolarity = 1;
+          ppg.lastBeatMs = now;
+          ppg.bpm = 60000.0f / interval;
+          ppg.heartRateValid = true;
+          state.replaceBpmOnNextInterval = false;
+          state.beatArmed = false;
+        }
+      }
+      state.positiveEdgeMs = now;
+    }
+    if (state.pulsePolarity == 0 && crossedNegative) {
+      if (state.negativeEdgeMs != 0) {
+        uint32_t interval = now - state.negativeEdgeMs;
+        if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
+          state.pulsePolarity = -1;
+          ppg.lastBeatMs = now;
+          ppg.bpm = 60000.0f / interval;
+          ppg.heartRateValid = true;
+          state.replaceBpmOnNextInterval = false;
+          state.beatArmed = false;
+        }
+      }
+      state.negativeEdgeMs = now;
+    }
+  }
+
+  bool crossedSelectedEdge = state.pulsePolarity > 0 ? crossedPositive :
+                              state.pulsePolarity < 0 ? crossedNegative : false;
   if (state.beatArmed && crossedSelectedEdge &&
       (ppg.lastBeatMs == 0 || now - ppg.lastBeatMs > 280)) {
-    if (state.pulsePolarity == 0) {
-      state.pulsePolarity = crossedPositive ? 1 : -1;
-    }
     state.beatArmed = false;
     if (ppg.lastBeatMs == 0) {
       ppg.lastBeatMs = now;
@@ -638,8 +669,9 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     state.replaceBpmOnNextInterval = true;
   }
 
-  // Cửa sổ một giây cho kết quả SpO2 đầu tiên sớm hơn mà vẫn đủ 100 mẫu.
-  if (state.windowSamples >= 100) {
+  // Cửa sổ 64 mẫu tạo kết quả đầu tiên sau khoảng 0,76 giây kể từ lúc chạm.
+  // SpO2 được tính độc lập với BPM vì hai đại lượng dùng điều kiện khác nhau.
+  if (state.windowSamples >= 64) {
     float redRms = sqrtf((float)(state.redSquareSum / state.windowSamples));
     float irRms = sqrtf((float)(state.irSquareSum / state.windowSamples));
     float perfusion = (state.dcIr > 1.0f) ?
@@ -652,9 +684,9 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
       if (ratio > 0.2f && ratio < 2.0f) {
         float estimatedSpO2 = constrain(110.0f - 25.0f * ratio, 70.0f, 100.0f);
         // Chỉ cập nhật bằng cửa sổ đủ chất lượng; cửa sổ lỗi không xóa kết quả cũ.
-        bool estimateValid = ppg.heartRateValid && perfusion > 0.08f &&
+        bool estimateValid = perfusion > 0.08f &&
                              state.fingerStartMs != 0 &&
-                             now - state.fingerStartMs >= 1200;
+                             now - state.fingerStartMs >= 700;
         if (estimateValid) {
           ppg.spo2 = ppg.spo2Valid ?
                        (0.8f * ppg.spo2 + 0.2f * estimatedSpO2) : estimatedSpO2;
