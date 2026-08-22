@@ -19,6 +19,7 @@ HTML = MATCH.group(1).encode()
 STATUS = {
     "fingerPresent": True,
     "heartRateValid": True,
+    "heartRateProvisional": False,
     "spo2Valid": True,
     "bpm": 76.0,
     "spo2": 97.0,

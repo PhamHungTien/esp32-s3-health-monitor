@@ -10,6 +10,8 @@ import random
 class BeatDetector:
     MIN_RR_MS = 333
     MAX_RR_MS = 1500
+    MIN_HALF_RR_MS = 167
+    MAX_HALF_RR_MS = 750
 
     def __init__(self) -> None:
         self.previous_filtered = 0.0
@@ -23,6 +25,8 @@ class BeatDetector:
         self.negative_edge_ms = 0
         self.bpm: float | None = None
         self.first_result_ms: int | None = None
+        self.first_confirmed_ms: int | None = None
+        self.provisional = False
 
     def process(self, filtered: float, now_ms: int) -> None:
         self.envelope += 0.025 * (abs(filtered) - self.envelope)
@@ -45,8 +49,12 @@ class BeatDetector:
                     self.pulse_polarity = 1
                     self.last_beat_ms = now_ms
                     self.bpm = 60000.0 / interval
+                    self.provisional = False
                     self.beat_armed = False
-                    self.first_result_ms = now_ms
+                    if self.first_confirmed_ms is None:
+                        self.first_confirmed_ms = now_ms
+                    if self.first_result_ms is None:
+                        self.first_result_ms = now_ms
             self.positive_edge_ms = now_ms
         if self.pulse_polarity == 0 and crossed_negative:
             if self.negative_edge_ms:
@@ -55,9 +63,25 @@ class BeatDetector:
                     self.pulse_polarity = -1
                     self.last_beat_ms = now_ms
                     self.bpm = 60000.0 / interval
+                    self.provisional = False
                     self.beat_armed = False
-                    self.first_result_ms = now_ms
+                    if self.first_confirmed_ms is None:
+                        self.first_confirmed_ms = now_ms
+                    if self.first_result_ms is None:
+                        self.first_result_ms = now_ms
             self.negative_edge_ms = now_ms
+
+        if (
+            self.pulse_polarity == 0
+            and self.bpm is None
+            and self.positive_edge_ms
+            and self.negative_edge_ms
+        ):
+            half_interval = abs(self.positive_edge_ms - self.negative_edge_ms)
+            if self.MIN_HALF_RR_MS <= half_interval <= self.MAX_HALF_RR_MS:
+                self.bpm = 30000.0 / half_interval
+                self.provisional = True
+                self.first_result_ms = now_ms
 
         selected_edge = (
             crossed_positive if self.pulse_polarity > 0
@@ -79,9 +103,10 @@ class BeatDetector:
                 interval = now_ms - self.last_beat_ms
                 if self.MIN_RR_MS <= interval <= self.MAX_RR_MS:
                     self.bpm = 60000.0 / interval
+                    self.provisional = False
                     self.last_beat_ms = now_ms
-                    if self.first_result_ms is None:
-                        self.first_result_ms = now_ms
+                    if self.first_confirmed_ms is None:
+                        self.first_confirmed_ms = now_ms
                 elif interval > self.MAX_RR_MS:
                     self.last_beat_ms = now_ms
 
@@ -135,7 +160,8 @@ def main() -> None:
     feed_sine(normal, bpm=75.0, amplitude=80.0, duration_ms=5000, noise=8.0)
     assert normal.bpm is not None
     assert abs(normal.bpm - 75.0) < 3.0
-    assert normal.first_result_ms is not None and normal.first_result_ms <= 1750
+    assert normal.first_result_ms is not None and normal.first_result_ms <= 1000
+    assert normal.first_confirmed_ms is not None and normal.first_confirmed_ms <= 1750
 
     low_perfusion = BeatDetector()
     feed_sine(low_perfusion, bpm=60.0, amplitude=48.0,
@@ -159,7 +185,8 @@ def main() -> None:
     assert spo2_result_ms is not None and spo2_result_ms <= 760
 
     print("PPG_NORMAL_SIGNAL_BPM=PASS")
-    print("PPG_FIRST_RESULT_WITHIN_1_75S=PASS")
+    print("PPG_PROVISIONAL_RESULT_WITHIN_1S=PASS")
+    print("PPG_CONFIRMED_RESULT_WITHIN_1_75S=PASS")
     print("PPG_LOW_PERFUSION_SIGNAL_BPM=PASS")
     print("PPG_AUTO_POLARITY_SIGNAL_BPM=PASS")
     print("PPG_NOISE_REJECTION=PASS")

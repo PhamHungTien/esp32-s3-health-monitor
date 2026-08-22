@@ -125,7 +125,7 @@
       \begin{itemize}\setlength\itemsep{3mm}
         \item ESP32-S3 tự phát mạng, không cần router hay Internet
         \item Captive portal và dashboard responsive cho điện thoại/laptop
-        \item API JSON cập nhật mỗi 0,5 giây, không chặn vòng lặp cảm biến
+        \item API JSON cập nhật mỗi 0,25 giây, không chặn vòng lặp cảm biến
         \item Đặt lại số bước và hủy cảnh báo ngay trên web
       \end{itemize}
     \end{column}
@@ -196,7 +196,7 @@
   \vspace{6mm}\par
   \bigmetric{100 Hz}{PPG}\hfill
   \bigmetric{10 Hz}{OLED}\hfill
-  \bigmetric{2 Hz}{Dashboard}
+  \bigmetric{4 Hz}{Dashboard}
   \vspace{2mm}\par\muted{Ba nhịp thời gian cùng chạy mà không dùng trì hoãn dài.}
 \end{frame}
 
@@ -209,7 +209,7 @@
     \draw[a](a)--(b);\draw[a](b)--(c);\draw[a](c)--(d);\draw[a](d)--(e);
   \end{tikzpicture}
   \vspace{8mm}
-  \bigmetric{72--83}{BPM quan sát}\hfill
+  \bigmetric{$<1$ s}{BPM sơ bộ}\hfill
   \bigmetric{90--96\%}{SpO$_2$ nguyên mẫu}\hfill
   \bigmetric{100 Hz}{Tốc độ lấy mẫu}\hfill
   \bigmetric{0,76 s}{SpO$_2$ sớm nhất}
@@ -272,7 +272,7 @@ return checksum == expected;
 \begin{frame}{Dashboard hiển thị toàn bộ trạng thái trên một màn hình}
   \centering
   \includegraphics[width=0.90\textwidth,height=5.25cm,keepaspectratio]{../reports_latex/assets/web/dashboard_preview.png}
-  \vspace{-1mm}\par\tiny\muted{Bản render dùng dữ liệu minh họa; khi chạy thật, giao diện lấy JSON từ ESP32-S3 mỗi 0,5 giây.}
+  \vspace{-1mm}\par\tiny\muted{Bản render dùng dữ liệu minh họa; khi chạy thật, giao diện lấy JSON từ ESP32-S3 mỗi 0,25 giây.}
 \end{frame}
 
 \begin{frame}{Luồng dữ liệu từ cảm biến đến dashboard}
@@ -283,7 +283,7 @@ return checksum == expected;
       \begin{enumerate}\setlength\itemsep{1.5mm}
         \item Firmware cập nhật trạng thái dùng chung
         \item \texttt{/api/status} tạo JSON khi có yêu cầu
-        \item JavaScript cập nhật thẻ số đo mỗi 0,5 giây
+        \item JavaScript cập nhật thẻ số đo mỗi 0,25 giây
         \item POST đặt lại bước hoặc hủy ALERT
       \end{enumerate}
     \end{column}
@@ -300,7 +300,7 @@ return checksum == expected;
     \end{column}
   \end{columns}
   \vspace{1mm}\par
-  \fcolorbox{Ink}{Ink}{\parbox{0.92\textwidth}{\centering\color{white}\small\bfseries Một ESP32-S3 duy trì PPG 100 Hz và dashboard 2 Hz; HTTP, DNS, JSON cùng toàn bộ giao diện đều do nhóm tự viết và lưu trong flash.}}
+  \fcolorbox{Ink}{Ink}{\parbox{0.92\textwidth}{\centering\color{white}\small\bfseries Một ESP32-S3 duy trì PPG 100 Hz và dashboard 4 Hz; HTTP, DNS, JSON cùng toàn bộ giao diện đều do nhóm tự viết và lưu trong flash.}}
 \end{frame}
 
 \end{document}

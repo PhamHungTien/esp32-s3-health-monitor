@@ -81,12 +81,12 @@ Framebuffer được truyền ở 400 kHz rồi bus trở lại 100 kHz cho cả
 
 ESP32-S3 tự phát mạng \Code{health-monitor} với mật khẩu \Code{99999999}; địa chỉ truy cập cố định là \path{http://192.168.4.1}. Chương trình chỉ dùng lớp TCP/UDP mức thấp của ESP32 Arduino Core để điều khiển phần cứng mạng. Nhóm tự phân tích dòng yêu cầu HTTP, tự định tuyến GET/POST, ghép tiêu đề phản hồi, tạo JSON và ghép gói DNS bản ghi A cho captive portal; không dùng \Code{WebServer}, \Code{DNSServer} hoặc thư viện web bên ngoài.
 
-Dashboard cập nhật mỗi 0,5 giây và hiển thị BPM, SpO$_2$, chất lượng PPG, RED/IR thô, số bước, trạng thái té ngã, gia tốc, trạng thái OLED/IMU/MAX30102/buzzer, GPS, vệ tinh, tọa độ, thời gian chạy và số thiết bị đang kết nối. Hai yêu cầu POST cục bộ cho phép đặt lại số bước và hủy cảnh báo té ngã.
+Dashboard cập nhật mỗi 0,25 giây và hiển thị BPM, SpO$_2$, chất lượng PPG, RED/IR thô, số bước, trạng thái té ngã, gia tốc, trạng thái OLED/IMU/MAX30102/buzzer, GPS, vệ tinh, tọa độ, thời gian chạy và số thiết bị đang kết nối. BPM nửa chu kỳ được ghi rõ là sơ bộ cho đến khi có RR đầy đủ. Hai yêu cầu POST cục bộ cho phép đặt lại số bước và hủy cảnh báo té ngã.
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.96\textwidth,height=8.2cm,keepaspectratio]{assets/web/dashboard_preview.png}
-  \caption{Bản render kiểm tra dashboard tinh gọn với dữ liệu minh họa. Giao diện thực tế nhận số liệu từ API JSON của ESP32-S3 mỗi 0,5 giây.}
+  \caption{Bản render kiểm tra dashboard tinh gọn với dữ liệu minh họa. Giao diện thực tế nhận số liệu từ API JSON của ESP32-S3 mỗi 0,25 giây.}
   \label{fig:tien-web-dashboard}
 \end{figure}
 
@@ -177,7 +177,7 @@ if (millis() - lastDisplayMs >= DISPLAY_PERIOD_MS) {
 
 \subsection{Khắc phục lỗi biên dịch và nạp}
 
-Em cấu hình \Code{USBMode=hwcdc}, \Code{CDCOnBoot=cdc}, flash 16 MB và OPI PSRAM cho đúng phiên bản bo. Sau mỗi lần reset, cổng USB mới được kiểm tra lại trước khi nạp. Phiên bản có Wi-Fi cùng HTTP/DNS tự viết sử dụng 968.902 byte flash (30\%) và 49.964 byte RAM toàn cục (15\%).
+Em cấu hình \Code{USBMode=hwcdc}, \Code{CDCOnBoot=cdc}, flash 16 MB và OPI PSRAM cho đúng phiên bản bo. Sau mỗi lần reset, cổng USB mới được kiểm tra lại trước khi nạp. Phiên bản có Wi-Fi cùng HTTP/DNS tự viết sử dụng 969.218 byte flash (30\%) và 49.972 byte RAM toàn cục (15\%).
 
 \section{Nhật ký khối lượng}
 
@@ -220,7 +220,7 @@ Không thấy cổng hoặc nạp thất bại & Chọn đúng ESP32-S3, dùng U
 Màn hình không hiện dữ liệu & Quét địa chỉ, kiểm tra SDA/SCL, khởi tạo lại SSD1306 và chỉ cập nhật khi truyền I2C thành công.\\
 Giao diện quá nhiều chữ & Ưu tiên hai số sức khỏe, dùng phân vùng và luân phiên tọa độ.\\
 Nhiều mô-đun làm chậm vòng lặp & Chuyển sang lịch không chặn và đọc FIFO/GPS ở mọi vòng lặp.\\
-Trang web làm tăng tải xử lý & Nhúng tài nguyên trong flash, không dùng CDN; API gọn và cập nhật mỗi 0,5 giây; gọi \Code{handleClient()} theo kiểu không chặn.\\
+Trang web làm tăng tải xử lý & Nhúng tài nguyên trong flash, không dùng CDN; API gọn và cập nhật mỗi 0,25 giây; gọi \Code{handleClient()} theo kiểu không chặn.\\
 \bottomrule
 \end{tabularx}
 

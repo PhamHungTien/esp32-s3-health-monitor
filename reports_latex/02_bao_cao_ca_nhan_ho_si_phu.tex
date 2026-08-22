@@ -92,7 +92,7 @@ Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động
   \mathrm{BPM}=\frac{60\,000}{\Delta t_{\mathrm{ms}}}.
 \]
 
-Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mượt. Khoảng RR hợp lệ đầu tiên được hiển thị ngay, không chờ thêm nhiều nhịp; các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Với tín hiệu tổng hợp 75 BPM, kết quả đầu tiên xuất hiện không quá 1,75 giây. Thời gian thực tế vẫn phụ thuộc pha sóng lúc đặt tay, nhịp tim, mức tưới máu, chuyển động và cách che cảm biến; BPM thật không thể có trước khi quan sát đủ một chu kỳ mạch.
+Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mượt. Hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ và được ghi nhãn rõ; cạnh cùng cực tính kế tiếp tạo RR đầy đủ để thay thế bằng BPM đã xác nhận. Với tín hiệu tổng hợp 75 BPM, số sơ bộ xuất hiện dưới một giây và số xác nhận không quá 1,75 giây. Ước lượng sơ bộ tự hủy sau 1,8 giây nếu không có chu kỳ đầy đủ xác nhận. Thời gian thực tế vẫn phụ thuộc pha sóng lúc đặt tay, mức tưới máu, chuyển động và cách che cảm biến.
 
 \subsection{\texorpdfstring{Ước lượng SpO$_2$}{Ước lượng SpO2}}
 
@@ -176,7 +176,7 @@ Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem 
 
 \subsection{Hợp đồng dữ liệu PPG cho dashboard}
 
-Em xác định nhóm trường PPG trong API gồm \Code{fingerPresent}, \Code{heartRateValid}, \Code{spo2Valid}, \Code{bpm}, \Code{spo2}, \Code{signalQuality}, \Code{redRaw} và \Code{irRaw}. Giao diện chỉ hiện BPM/SpO$_2$ khi cờ tương ứng hợp lệ; khi chưa đặt tay, thẻ số đo dùng ký hiệu chờ thay vì giữ số của phiên trước. Thanh chất lượng được giới hạn 0--100\% và dữ liệu thô được dùng để hỗ trợ chẩn đoán tín hiệu, không được trình bày như chỉ số sức khỏe.
+API công bố trạng thái ngón tay, BPM, SpO$_2$, chất lượng và RED/IR thô; cờ \Code{heartRateValid} cho biết đã có số, còn cờ sơ bộ cho biết kết quả đang chờ RR đầy đủ xác nhận. Khi chưa đặt tay, thẻ số đo dùng ký hiệu chờ thay vì giữ số của phiên trước. Thanh chất lượng được giới hạn 0--100\% và dữ liệu thô chỉ hỗ trợ chẩn đoán tín hiệu.
 
 Việc tách trạng thái hợp lệ khỏi giá trị số giúp OLED, Serial và web dùng cùng một nguồn sự thật. Nhờ đó, dashboard không tự suy diễn trạng thái từ số 0 và không hiển thị nhầm kết quả cũ sau khi đổi người đo.
 
@@ -207,7 +207,7 @@ Hợp đồng dữ liệu và kiểm tra dashboard & 3 giờ & Trường JSON v�
 Không đặt ngón tay & IR khoảng 330--400; BPM/SpO$_2$ ở WAIT & \OK\\
 Đặt ngón tay ổn định & IR khoảng 132.000--137.000 & Nhận diện biên độ rõ\\
 Sau thời gian hội tụ & BPM khoảng 72--83 qua các lần thử & \OK\\
-Thời gian xuất kết quả tổng hợp & BPM 75 BPM không quá 1,75 giây; SpO$_2$ được xét từ khoảng 0,76 giây và không chờ BPM & \OK\\
+Thời gian xuất kết quả tổng hợp & BPM sơ bộ dưới 1 giây, xác nhận không quá 1,75 giây; SpO$_2$ từ khoảng 0,76 giây & \OK\\
 Dạng sóng đảo cực tính & Bộ dò tự khóa cạnh dương hoặc âm và vẫn tính đúng BPM & \OK\\
 Ước lượng SpO$_2$ thử nghiệm & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\

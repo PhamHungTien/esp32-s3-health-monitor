@@ -63,14 +63,14 @@ static const char WEB_DASHBOARD_HTML[] PROGMEM = R"HTML(
     function fallClass(v){return v==='FALL'?'danger':(v==='FREE'||v==='CHECK'?'warn':'ok')}
     async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();
       $('bpm').textContent=d.heartRateValid?Math.round(d.bpm):'--';$('spo2').textContent=d.spo2Valid?Math.round(d.spo2):'--';$('steps').textContent=d.steps;
-      $('finger').textContent=d.fingerPresent?(d.heartRateValid?'Đã nhận nhịp':'Đang bắt mạch…'):'Chưa đặt ngón tay';$('fall').textContent=d.fall;$('fall').className='number status '+fallClass(d.fall);$('acceleration').textContent='Gia tốc '+num(d.acceleration,2)+' g';
+      $('finger').textContent=d.fingerPresent?(d.heartRateValid?(d.heartRateProvisional?'BPM sơ bộ · đang xác nhận':'Đã xác nhận nhịp'):'Đang bắt mạch…'):'Chưa đặt ngón tay';$('fall').textContent=d.fall;$('fall').className='number status '+fallClass(d.fall);$('acceleration').textContent='Gia tốc '+num(d.acceleration,2)+' g';
       $('qualityText').textContent=Math.round(d.signalQuality)+'%';$('qualityBar').style.width=Math.max(0,Math.min(100,d.signalQuality))+'%';$('irRaw').textContent=Number(d.irRaw).toLocaleString('vi-VN');
       state($('maxStatus'),d.maxOK);state($('oledStatus'),d.oledOK);state($('imuStatus'),d.imuOK);state($('buzzerStatus'),d.buzzerOK);
       $('gpsState').textContent=d.gpsState;$('satellites').textContent=d.satellites;$('latitude').textContent=d.positionKnown?num(d.latitude,6):'--';$('longitude').textContent=d.positionKnown?num(d.longitude,6):'--';
       $('mapLink').style.opacity=d.positionKnown?'1':'.45';$('mapLink').href=d.positionKnown?'https://www.google.com/maps?q='+d.latitude+','+d.longitude:'#';$('clients').textContent=d.clients;$('uptime').textContent=Math.floor(d.uptime/60)+' phút '+(d.uptime%60)+' giây';
       $('live').classList.remove('offline');$('liveText').textContent='Trực tiếp';}catch(e){$('live').classList.add('offline');$('liveText').textContent='Mất kết nối'}}
     async function post(url){await fetch(url,{method:'POST'});refresh()}
-    $('resetSteps').onclick=()=>post('/api/reset-steps');$('resetAlert').onclick=()=>post('/api/reset-alert');refresh();setInterval(refresh,500);
+    $('resetSteps').onclick=()=>post('/api/reset-steps');$('resetAlert').onclick=()=>post('/api/reset-alert');refresh();setInterval(refresh,250);
   </script>
 </body>
 </html>

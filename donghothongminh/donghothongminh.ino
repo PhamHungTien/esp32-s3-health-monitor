@@ -76,6 +76,7 @@ uint32_t lastGPSFixMs = 0;
 struct PPGMetrics {
   bool fingerPresent;
   bool heartRateValid;
+  bool heartRateProvisional;
   bool spo2Valid;
   float bpm;
   float spo2;
@@ -104,6 +105,7 @@ struct PPGFilterState {
   int8_t pulsePolarity;
   uint32_t positiveEdgeMs;
   uint32_t negativeEdgeMs;
+  uint32_t provisionalBpmMs;
 };
 
 PPGFilterState ppgFilter = {};
@@ -503,6 +505,7 @@ bool MAX30102_Init() {
 void PPG_ResetMetrics() {
   ppg.fingerPresent = false;
   ppg.heartRateValid = false;
+  ppg.heartRateProvisional = false;
   ppg.spo2Valid = false;
   ppg.bpm = 0.0f;
   ppg.spo2 = 0.0f;
@@ -517,6 +520,8 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;
+  constexpr uint32_t MIN_HALF_RR_MS = 167;
+  constexpr uint32_t MAX_HALF_RR_MS = 750;
 
   ppg.redRaw = redValue;
   ppg.irRaw = irValue;
@@ -612,6 +617,7 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
           ppg.lastBeatMs = now;
           ppg.bpm = 60000.0f / interval;
           ppg.heartRateValid = true;
+          ppg.heartRateProvisional = false;
           state.replaceBpmOnNextInterval = false;
           state.beatArmed = false;
         }
@@ -626,11 +632,28 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
           ppg.lastBeatMs = now;
           ppg.bpm = 60000.0f / interval;
           ppg.heartRateValid = true;
+          ppg.heartRateProvisional = false;
           state.replaceBpmOnNextInterval = false;
           state.beatArmed = false;
         }
       }
       state.negativeEdgeMs = now;
+    }
+
+    // Hai cạnh trái dấu cách nhau gần nửa chu kỳ cho một BPM sơ bộ. Giá trị
+    // này chỉ dùng trong phiên hiện tại và sẽ được thay bằng RR đầy đủ ngay
+    // khi cùng một cực tính xuất hiện lần thứ hai.
+    if (!ppg.heartRateValid && state.positiveEdgeMs != 0 &&
+        state.negativeEdgeMs != 0) {
+      uint32_t halfInterval = state.positiveEdgeMs > state.negativeEdgeMs ?
+                                state.positiveEdgeMs - state.negativeEdgeMs :
+                                state.negativeEdgeMs - state.positiveEdgeMs;
+      if (halfInterval >= MIN_HALF_RR_MS && halfInterval <= MAX_HALF_RR_MS) {
+        ppg.bpm = 30000.0f / halfInterval;
+        ppg.heartRateValid = true;
+        ppg.heartRateProvisional = true;
+        state.provisionalBpmMs = now;
+      }
     }
   }
 
@@ -645,10 +668,12 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
       uint32_t interval = now - ppg.lastBeatMs;
       if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
         float instantBPM = 60000.0f / interval;
-        if (!ppg.heartRateValid || state.replaceBpmOnNextInterval) {
+        if (ppg.heartRateProvisional || !ppg.heartRateValid ||
+            state.replaceBpmOnNextInterval) {
           // Khoảng RR hợp lệ đầu tiên được hiển thị ngay.
           ppg.bpm = instantBPM;
           ppg.heartRateValid = true;
+          ppg.heartRateProvisional = false;
           state.replaceBpmOnNextInterval = false;
         } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
           ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
@@ -662,6 +687,15 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   }
   state.previousSlope = slope;
   state.previousFiltered = state.filtered;
+
+  if (ppg.heartRateProvisional && state.provisionalBpmMs != 0 &&
+      now - state.provisionalBpmMs > 1800) {
+    // Không giữ ước lượng nửa chu kỳ nếu không có RR đầy đủ xác nhận tiếp theo.
+    ppg.bpm = 0.0f;
+    ppg.heartRateValid = false;
+    ppg.heartRateProvisional = false;
+    state.provisionalBpmMs = 0;
+  }
 
   if (ppg.lastBeatMs != 0 && now - ppg.lastBeatMs > 3000) {
     // Giữ BPM gần nhất trên màn hình và bắt đầu lại việc tìm một cặp nhịp mới.
@@ -889,7 +923,8 @@ void HTTP_SendStatus(WiFiClient &client) {
     json, sizeof(json),
     "{\"uptime\":%lu,\"clients\":%u,"
     "\"oledOK\":%s,\"imuOK\":%s,\"maxOK\":%s,\"buzzerOK\":%s,"
-    "\"fingerPresent\":%s,\"heartRateValid\":%s,\"spo2Valid\":%s,"
+    "\"fingerPresent\":%s,\"heartRateValid\":%s,"
+    "\"heartRateProvisional\":%s,\"spo2Valid\":%s,"
     "\"bpm\":%.2f,\"spo2\":%.2f,\"signalQuality\":%.2f,"
     "\"redRaw\":%lu,\"irRaw\":%lu,\"steps\":%lu,"
     "\"fall\":\"%s\",\"acceleration\":%.3f,\"motion\":%.3f,"
@@ -900,6 +935,7 @@ void HTTP_SendStatus(WiFiClient &client) {
     maxOK ? "true" : "false", buzzerOK ? "true" : "false",
     ppg.fingerPresent ? "true" : "false",
     ppg.heartRateValid ? "true" : "false",
+    ppg.heartRateProvisional ? "true" : "false",
     ppg.spo2Valid ? "true" : "false",
     ppg.bpm, ppg.spo2, ppg.signalQuality,
     (unsigned long)ppg.redRaw, (unsigned long)ppg.irRaw,
@@ -1125,6 +1161,8 @@ void OLED_RenderStatus() {
   } else if (!ppg.heartRateValid) {
     OLED_DrawText(4, 42, ppg.lastBeatMs == 0 ? "DANG BAT MACH..." :
                                                "DANG TINH BPM...");
+  } else if (ppg.heartRateProvisional) {
+    OLED_DrawText(4, 42, "BPM SO BO - DANG XAC NHAN");
   } else if (!ppg.spo2Valid) {
     OLED_DrawText(4, 42, "BPM OK - DANG DO SPO2");
   } else {
@@ -1270,7 +1308,9 @@ void loop() {
                   "A:%.2fg | GPS:%s SAT:%u LAT:%.6f LON:%.6f BYTE:%lu\n",
                   oledOK ? "OK" : "ERR", imuOK ? "OK" : "ERR",
                   maxOK ? "OK" : "ERR", ppg.fingerPresent ? "YES" : "NO",
-                  ppg.bpm, ppg.heartRateValid ? "OK" : "WAIT",
+                  ppg.bpm, ppg.heartRateValid ?
+                             (ppg.heartRateProvisional ? "FAST" : "OK") :
+                             "WAIT",
                   ppg.spo2, ppg.spo2Valid ? "OK" : "WAIT",
                   ppg.signalQuality, (unsigned long)ppg.irRaw,
                   (unsigned long)stepCount, Fall_StateText(), accelerationG,

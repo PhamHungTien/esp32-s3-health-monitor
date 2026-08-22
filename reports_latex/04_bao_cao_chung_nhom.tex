@@ -13,7 +13,7 @@
 Nhóm xây dựng thiết bị nguyên mẫu dùng ESP32-S3 để đo nhịp tim, ước lượng nồng độ oxy trong máu, đếm bước, hiển thị trên OLED, phát hiện té ngã, lấy vị trí GPS và cung cấp dashboard qua Wi-Fi cục bộ. Chương trình chỉ dùng thành phần thuộc ESP32 Arduino Core; driver cảm biến, xử lý tín hiệu, parser và giao diện web được viết trong mã nguồn của nhóm.
 
 \begin{summarybox}[Kết quả chính]
-Ba thiết bị I2C được nhận đồng thời; OLED và dashboard hiển thị dữ liệu sức khỏe; MAX30102 phát hiện ngón tay và BPM hội tụ; IMU trả gia tốc nghỉ xấp xỉ 1$g$; GPS bắt FIX với 4 vệ tinh ở lần chạy cuối. ESP32-S3 phát mạng \Code{health-monitor}, phục vụ giao diện tại 192.168.4.1 và API JSON cập nhật mỗi 0,5 giây. Kênh LEDC cho buzzer và hai thao tác web đặt lại bước/hủy cảnh báo đã được cài đặt. Đếm bước, SpO$_2$ và té ngã vẫn cần thêm hiệu chuẩn hoặc phép thử thực tế.
+Ba thiết bị I2C được nhận đồng thời; OLED và dashboard hiển thị dữ liệu sức khỏe; MAX30102 phát hiện ngón tay và BPM hội tụ; IMU trả gia tốc nghỉ xấp xỉ 1$g$; GPS bắt FIX với 4 vệ tinh ở lần chạy cuối. ESP32-S3 phát mạng \Code{health-monitor}, phục vụ giao diện tại 192.168.4.1 và API JSON cập nhật mỗi 0,25 giây. Kênh LEDC cho buzzer và hai thao tác web đặt lại bước/hủy cảnh báo đã được cài đặt. Đếm bước, SpO$_2$ và té ngã vẫn cần thêm hiệu chuẩn hoặc phép thử thực tế.
 \end{summarybox}
 
 \section{Đối chiếu yêu cầu nộp bài}
@@ -208,7 +208,7 @@ Hai endpoint POST cho phép đặt lại số bước và hủy cảnh báo. Das
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth,height=8.6cm,keepaspectratio]{assets/web/dashboard_preview.png}
-  \caption{Dashboard web tinh gọn được render với dữ liệu minh họa để kiểm tra bố cục. Khi chạy trên ESP32-S3, trang lấy dữ liệu thực từ API JSON mỗi 0,5 giây.}
+  \caption{Dashboard web tinh gọn được render với dữ liệu minh họa để kiểm tra bố cục. Khi chạy trên ESP32-S3, trang lấy dữ liệu thực từ API JSON mỗi 0,25 giây.}
   \label{fig:web-dashboard}
 \end{figure}
 
@@ -216,7 +216,7 @@ Hai endpoint POST cho phép đặt lại số bước và hủy cảnh báo. Das
 
 \subsection{\texorpdfstring{Nhịp tim và SpO$_2$}{Nhịp tim và SpO2}}
 
-MAX30102 cung cấp hai kênh quang RED/IR ở 100 Hz. Sau 0,12 giây bám nền, bộ dò theo dõi song song hai cực tính và chỉ khóa khi có một khoảng RR hợp lệ; BPM được xuất ngay từ khoảng đó. SpO$_2$ dùng tỷ lệ giữa AC/DC trong cửa sổ 64 mẫu, được xét độc lập với BPM và có thể xuất từ khoảng 0,76 giây nếu tín hiệu quang đạt điều kiện. Cờ hợp lệ ngăn màn hình dùng số khi chưa đủ dữ liệu.
+MAX30102 cung cấp hai kênh quang RED/IR ở 100 Hz. Sau 0,12 giây bám nền, hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ; cạnh cùng cực tính kế tiếp xác nhận RR đầy đủ và thay số sơ bộ. Nếu không có RR xác nhận trong 1,8 giây, số sơ bộ tự bị hủy. SpO$_2$ dùng tỷ lệ giữa AC/DC trong cửa sổ 64 mẫu, được xét độc lập với BPM và có thể xuất từ khoảng 0,76 giây nếu tín hiệu quang đạt điều kiện.
 
 \subsection{Phát hiện té ngã}
 
@@ -364,7 +364,7 @@ Gia tốc nghỉ & 1,07--1,08$g$ & \OK\\
 MAX30102 rời tay & IR 330--400, kết quả ở WAIT & \OK\\
 MAX30102 đặt tay & IR 132.000--137.000 & \OK\\
 Nhịp tim & BPM quan sát khoảng 72--83 qua các lần thử & \OK\\
-Thời gian PPG tổng hợp & BPM 75 BPM không quá 1,75 giây; SpO$_2$ được xét từ khoảng 0,76 giây và không chờ BPM & \OK\\
+Thời gian PPG tổng hợp & BPM sơ bộ dưới 1 giây, xác nhận không quá 1,75 giây; SpO$_2$ từ khoảng 0,76 giây & \OK\\
 Dạng sóng PPG đảo & Bộ dò tự nhận cực tính dương/âm và vẫn khôi phục đúng BPM & \OK\\
 SpO$_2$ nguyên mẫu & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Luồng GPS & Hơn 7.000 byte NMEA; không mất UART & \OK\\
@@ -375,7 +375,7 @@ Dashboard responsive & Hiển thị đủ PPG, bước, té ngã, thiết bị, 
 Điều khiển web & Đặt lại bước và hủy cảnh báo trả JSON thành công & \OK\\
 Té ngã mô phỏng & Chuỗi đầy đủ vào ALERT; chuỗi thiếu va đập về NORMAL & \OK\\
 Té ngã thực tế & Chưa thử ngã người thật; chỉ mới kiểm tra logic và ngưỡng trên mô hình & \NeedTest\\
-Biên dịch & 968.902 byte flash (30\%), RAM 49.964 byte (15\%) & \OK\\
+Biên dịch & 969.218 byte flash (30\%), RAM 49.972 byte (15\%) & \OK\\
 Nạp phần cứng & Xác minh hash, hard reset thành công & \OK\\
 \bottomrule
 \end{longtable}
