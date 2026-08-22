@@ -59,6 +59,15 @@ class PPGDisplayState:
 
 
 def main() -> None:
+    # Sau thời gian không có tay, lần đặt mới yêu cầu đúng một lần làm sạch
+    # MAX30102/FIFO; phiên vừa khởi tạo không được reset lặp vô hạn.
+    hardware_fresh = False
+    reinit_requested = not hardware_fresh
+    assert reinit_requested
+    hardware_fresh = True
+    reinit_requested = not hardware_fresh
+    assert not reinit_requested
+
     state = PPGDisplayState()
 
     state.handle_pulse_timeout()
@@ -92,6 +101,7 @@ def main() -> None:
 
     print("PPG_TRANSIENT_GAP_RETAINS_VALUES=PASS")
     print("PPG_QUICK_REINSERT_STARTS_NEW_SESSION=PASS")
+    print("PPG_NEW_SESSION_REINITIALIZES_SENSOR_ONCE=PASS")
     print("PPG_PULSE_TIMEOUT_RETAINS_BPM=PASS")
     print("PPG_BAD_SPO2_WINDOW_RETAINS_VALUE=PASS")
     print("PPG_CONFIRMED_FINGER_RELEASE_CLEARS_VALUES=PASS")

@@ -60,6 +60,10 @@ uint8_t oledBuffer[1024];
 bool oledOK = false;
 bool imuOK = false;
 bool maxOK = false;
+// Mở Serial Monitor có thể reset bo và vô tình làm sạch MAX30102/FIFO. Hai cờ
+// này tái tạo đúng bước đó cho từng phiên đo mà không phụ thuộc cổng USB.
+bool maxHardwareFreshForSession = false;
+bool maxReinitRequested = false;
 
 uint32_t gpsByteCount = 0;
 uint32_t lastGPSByteMs = 0;
@@ -540,6 +544,7 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   bool hasFinger = ppg.fingerPresent ? (irValue > 7000) : (irValue > 10000);
   if (!hasFinger) {
     if (!ppg.fingerPresent) {
+      maxHardwareFreshForSession = false;
       state.dcRed = redValue;
       state.dcIr = irValue;
       return;
@@ -556,6 +561,15 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     }
     return;
   }
+
+  if (!ppg.fingerPresent && !maxHardwareFreshForSession) {
+    // Ngón tay mới xuất hiện sau một khoảng không có tay: yêu cầu vòng lặp
+    // reset riêng MAX30102 và FIFO. Không gọi I2C tại đây vì vẫn đang đọc một
+    // nhóm FIFO; thực hiện sau khi giao dịch hiện tại kết thúc sẽ an toàn hơn.
+    maxReinitRequested = true;
+    return;
+  }
+
   if (ppg.fingerPresent && state.fingerReleaseStartMs != 0 &&
       sampleTimeMs - state.fingerReleaseStartMs >= FINGER_GAP_NEW_SESSION_MS) {
     // Ngón tay đã rời đủ lâu rồi xuất hiện lại trước thời hạn xác nhận nhả.
@@ -758,6 +772,9 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     state.irSquareSum = 0.0;
     state.windowSamples = 0;
     state.fingerStartMs = now;
+    // Nếu bộ dò phần mềm vẫn không có nhịp, làm sạch luôn FIFO/phần cứng như
+    // hiệu ứng khi người dùng mở lại Serial Monitor.
+    maxReinitRequested = true;
   }
 
   // Cửa sổ 64 mẫu tạo kết quả đầu tiên sau khoảng 0,76 giây kể từ lúc chạm.
@@ -1276,6 +1293,7 @@ void setup() {
   }
   imuOK = IMU_Init();
   maxOK = MAX30102_Init();
+  maxHardwareFreshForSession = maxOK;
 
   // GPS truyền NMEA qua UART1 ở 9600 baud.
   gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
@@ -1319,6 +1337,19 @@ void loop() {
     }
   }
 
+
+  if (maxOK && maxReinitRequested) {
+    maxReinitRequested = false;
+    if (MAX30102_Init()) {
+      PPG_ResetMetrics();
+      maxHardwareFreshForSession = true;
+    } else {
+      maxOK = false;
+      maxHardwareFreshForSession = false;
+      Serial.println("[MAX30102] Loi khoi tao lai phien do");
+    }
+  }
+
   // IMU được cập nhật ở 50 Hz.
   if (millis() - lastIMUMs >= IMU_PERIOD_MS) {
     lastIMUMs = millis();
@@ -1347,6 +1378,7 @@ void loop() {
     if (!maxOK && MAX30102_Init()) {
       PPG_ResetMetrics();
       maxOK = true;
+      maxHardwareFreshForSession = true;
       Serial.println("[MAX30102] Da ket noi lai");
     }
   }
