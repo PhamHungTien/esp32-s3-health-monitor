@@ -210,6 +210,15 @@ và đổi dấu cho bán cầu Nam hoặc Tây. Vị trí chỉ được đánh
 
 \Needspace{0.34\textheight}
 \begin{lstlisting}[style=firmware,caption={Tính và kiểm tra checksum NMEA trước khi tách trường}]
+(*@\VNCodeComment{Đổi một ký tự hexadecimal thành giá trị 0--15 để đọc hai chữ số checksum.}@*)
+int8_t NMEA_HexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+(*@\VNCodeComment{Trả -1 nếu ký tự không thuộc miền hexadecimal hợp lệ.}@*)
+  return -1;
+}
+
 (*@\VNCodeComment{Khai báo hàm kiểm tra checksum và nhận chuỗi NMEA dạng ký tự làm đầu vào.}@*)
 bool NMEA_ChecksumOK(const char *sentence) {
 (*@\VNCodeComment{Loại con trỏ rỗng hoặc chuỗi không bắt đầu bằng ký tự đô-la theo chuẩn NMEA.}@*)
@@ -242,7 +251,135 @@ bool NMEA_ChecksumOK(const char *sentence) {
 }
 \end{lstlisting}
 
-\subsection{Trạng thái vận hành}
+\subsection{Đổi định dạng và lưu vị trí hợp lệ}
+
+\begin{lstlisting}[style=firmware,caption={Đổi tọa độ NMEA và lưu vị trí sau khi kiểm tra miền}]
+(*@\VNCodeComment{Đổi chuỗi ddmm.mmmm hoặc dddmm.mmmm của NMEA sang độ thập phân.}@*)
+double NMEA_ToDegrees(const char *value, char hemisphere) {
+  if (!value || !*value) return 0.0;
+  double raw = atof(value);
+(*@\VNCodeComment{Phần nguyên trước hai chữ số phút là số độ; phần còn lại là số phút.}@*)
+  int degrees = (int)(raw / 100.0);
+  double minutes = raw - degrees * 100.0;
+  double result = degrees + minutes / 60.0;
+(*@\VNCodeComment{Vĩ độ Nam và kinh độ Tây mang dấu âm trong hệ tọa độ thập phân.}@*)
+  if (hemisphere == 'S' || hemisphere == 'W') result = -result;
+  return result;
+}
+
+(*@\VNCodeComment{Chỉ lưu khi đủ hai chuỗi tọa độ và hai ký hiệu bán cầu hợp lệ.}@*)
+bool GPS_StorePosition(const char *latitude, char northSouth,
+                       const char *longitude, char eastWest) {
+  if (!latitude || !longitude || !latitude[0] || !longitude[0]) return false;
+  if (northSouth != 'N' && northSouth != 'S') return false;
+  if (eastWest != 'E' && eastWest != 'W') return false;
+
+(*@\VNCodeComment{Đổi hai trường NMEA rồi loại tọa độ vượt giới hạn địa lý.}@*)
+  double parsedLatitude = NMEA_ToDegrees(latitude, northSouth);
+  double parsedLongitude = NMEA_ToDegrees(longitude, eastWest);
+  if (fabs(parsedLatitude) > 90.0 ||
+      fabs(parsedLongitude) > 180.0) return false;
+
+(*@\VNCodeComment{Công bố vị trí, đánh dấu đã từng có tọa độ và lưu thời điểm fix mới nhất.}@*)
+  gpsLatitude = parsedLatitude;
+  gpsLongitude = parsedLongitude;
+  gpsFix = true;
+  gpsPositionKnown = true;
+  lastGPSFixMs = millis();
+  return true;
+}
+\end{lstlisting}
+
+\subsection{Tách trường GGA và RMC}
+
+\begin{lstlisting}[style=firmware,caption={Parser NMEA tự viết cho câu GGA và RMC}]
+(*@\VNCodeComment{Loại ngay câu sai checksum trước khi sao chép hoặc tách trường.}@*)
+void GPS_ParseSentence(const char *sentence) {
+  if (!NMEA_ChecksumOK(sentence)) return;
+
+(*@\VNCodeComment{Sao chép tối đa 95 ký tự và luôn kết thúc chuỗi bằng ký tự rỗng.}@*)
+  char copy[96];
+  strncpy(copy, sentence, sizeof(copy));
+  copy[sizeof(copy) - 1] = '\0';
+(*@\VNCodeComment{Cắt phần checksum để dấu sao không nằm trong trường cuối.}@*)
+  char *star = strchr(copy, '*');
+  if (star) *star = '\0';
+
+(*@\VNCodeComment{Tự tách tối đa 16 trường bằng cách thay dấu phẩy thành ký tự kết thúc chuỗi.}@*)
+  char *fields[16] = {nullptr};
+  uint8_t count = 1;
+  fields[0] = copy;
+  for (char *p = copy; *p && count < 16; p++) {
+    if (*p == ',') {
+      *p = '\0';
+      fields[count++] = p + 1;
+    }
+  }
+  if (count == 0) return;
+
+(*@\VNCodeComment{Nhận loại câu bằng hậu tố GGA hoặc RMC để hỗ trợ nhiều tiền tố vệ tinh.}@*)
+  bool isGGA = strstr(fields[0], "GGA") != nullptr;
+  bool isRMC = strstr(fields[0], "RMC") != nullptr;
+
+(*@\VNCodeComment{GGA cung cấp chất lượng fix, số vệ tinh, vĩ độ và kinh độ.}@*)
+  if (isGGA && count > 7) {
+    uint8_t quality = (uint8_t)atoi(fields[6]);
+    gpsSatellites = (uint8_t)atoi(fields[7]);
+    if (quality == 0 ||
+        !GPS_StorePosition(fields[2], fields[3][0],
+                           fields[4], fields[5][0])) {
+      gpsFix = false;
+    }
+(*@\VNCodeComment{RMC chỉ được chấp nhận khi trường trạng thái bằng A và tọa độ hợp lệ.}@*)
+  } else if (isRMC && count > 6) {
+    if (fields[2][0] != 'A' ||
+        !GPS_StorePosition(fields[3], fields[4][0],
+                           fields[5], fields[6][0])) {
+      gpsFix = false;
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Thu UART và trạng thái vận hành}
+
+\begin{lstlisting}[style=firmware,caption={Gom câu NMEA từ UART và phân loại trạng thái GPS}]
+(*@\VNCodeComment{Đọc hết byte UART đang chờ để bộ đệm không tràn khi vòng lặp xử lý mô-đun khác.}@*)
+void GPS_Poll() {
+  while (gpsSerial.available() > 0) {
+    char c = (char)gpsSerial.read();
+    gpsByteCount++;
+    lastGPSByteMs = millis();
+
+(*@\VNCodeComment{Ký tự đô-la luôn bắt đầu một câu mới và xóa phần câu dở trước đó.}@*)
+    if (c == '$') {
+      gpsWorkingLength = 0;
+      gpsWorking[gpsWorkingLength++] = c;
+(*@\VNCodeComment{Ký tự xuống dòng kết thúc câu; parser chỉ nhận bộ đệm không rỗng.}@*)
+    } else if (c == '\n') {
+      if (gpsWorkingLength > 0) {
+        gpsWorking[gpsWorkingLength] = '\0';
+        GPS_ParseSentence(gpsWorking);
+        gpsWorkingLength = 0;
+      }
+(*@\VNCodeComment{Bỏ ký tự CR và chỉ nối byte khi câu đã bắt đầu, còn đủ chỗ cho ký tự kết thúc.}@*)
+    } else if (c != '\r' && gpsWorkingLength > 0 &&
+               gpsWorkingLength < sizeof(gpsWorking) - 1) {
+      gpsWorking[gpsWorkingLength++] = c;
+    }
+  }
+}
+
+(*@\VNCodeComment{Phân biệt chưa có byte, mất luồng UART, có fix mới và đang nhận nhưng chưa fix.}@*)
+const char *GPS_StatusText() {
+  if (gpsByteCount == 0) return "WAIT";
+  if (millis() - lastGPSByteMs > 3000) return "LOST";
+  if (gpsFix && millis() - lastGPSFixMs < 10000) return "FIX";
+  return "NOFIX";
+}
+\end{lstlisting}
+
+Các trạng thái xuất ra OLED, Serial và API có ý nghĩa:
 
 \begin{itemize}
   \item \textbf{WAIT:} chưa nhận byte GPS;

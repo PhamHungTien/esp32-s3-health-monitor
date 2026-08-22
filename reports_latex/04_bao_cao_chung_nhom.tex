@@ -242,7 +242,7 @@ Thành phần gia tốc chậm được dùng làm đường nền. Chương tr�
 
 \subsection{GPS}
 
-Parser chỉ chấp nhận câu NMEA có checksum đúng. GGA/RMC được dùng để lấy vị trí, số vệ tinh và trạng thái fix. Hệ thống tách WAIT, LOST, NOFIX và FIX để tránh hiểu nhầm GPS chưa bắt vệ tinh là lỗi dây.
+GPS dùng UART1 ở 9.600 baud và được đọc hết byte đang chờ trong mỗi vòng lặp. Bộ đệm tự gom câu từ ký tự ``\$'' đến cuối dòng, kiểm tra checksum XOR rồi mới tách tối đa 16 trường. GGA cung cấp chất lượng fix, số vệ tinh và tọa độ; RMC chỉ được nhận khi trạng thái bằng A. Tọa độ ddmm.mmmm/dddmm.mmmm được đổi sang độ thập phân, kiểm tra bán cầu và giới hạn vĩ/kinh độ trước khi lưu. Hệ thống tách WAIT, LOST, NOFIX và FIX theo bộ đếm byte cùng thời điểm nhận dữ liệu/fix gần nhất để tránh hiểu nhầm chưa bắt vệ tinh là lỗi dây.
 
 \section{Các đoạn mã quyết định}
 
@@ -366,19 +366,146 @@ switch (fallState) {
 
 \Needspace{0.28\textheight}
 \subsection{Loại câu NMEA sai checksum}
-\begin{lstlisting}[style=firmware,caption={Checksum XOR của phần thân câu NMEA}]
-(*@\VNCodeComment{Khởi tạo byte checksum tự tính bằng 0.}@*)
-uint8_t checksum = 0;
-(*@\VNCodeComment{Duyệt phần thân NMEA, bắt đầu sau ký tự đô-la và dừng trước dấu sao.}@*)
-for (const char *p = sentence + 1; p < star; p++) {
-(*@\VNCodeComment{XOR lần lượt từng ký tự để tạo checksum theo chuẩn NMEA 0183.}@*)
-  checksum ^= (uint8_t)*p;
-(*@\VNCodeComment{Kết thúc vòng lặp sau khi đã xử lý hết phần thân câu.}@*)
+\begin{lstlisting}[style=firmware,caption={Hàm kiểm tra đầy đủ checksum NMEA}]
+(*@\VNCodeComment{Đổi một chữ số hexadecimal sang giá trị 0--15; ký tự lạ trả -1.}@*)
+int8_t NMEA_HexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
 }
-(*@\VNCodeComment{Ghép hai chữ số hexadecimal đã chuyển đổi thành checksum nhận kèm câu.}@*)
-uint8_t expected = (uint8_t)((high << 4) | low);
-(*@\VNCodeComment{Trả về đúng khi byte tự tính trùng byte nhận được; câu sai checksum bị loại.}@*)
-return checksum == expected;
+
+(*@\VNCodeComment{Chỉ nhận câu bắt đầu bằng đô-la, có dấu sao và đủ hai chữ số checksum.}@*)
+bool NMEA_ChecksumOK(const char *sentence) {
+  if (!sentence || sentence[0] != '$') return false;
+  const char *star = strchr(sentence, '*');
+  if (!star || strlen(star) < 3) return false;
+  int8_t high = NMEA_HexNibble(star[1]);
+  int8_t low = NMEA_HexNibble(star[2]);
+  if (high < 0 || low < 0) return false;
+(*@\VNCodeComment{XOR toàn bộ phần thân giữa ký tự đô-la và dấu sao.}@*)
+  uint8_t checksum = 0;
+  for (const char *p = sentence + 1; p < star; p++) {
+    checksum ^= (uint8_t)*p;
+  }
+(*@\VNCodeComment{Ghép hai nửa byte và so sánh với checksum tự tính.}@*)
+  uint8_t expected = (uint8_t)((high << 4) | low);
+  return checksum == expected;
+}
+\end{lstlisting}
+
+\subsection{Đổi và kiểm tra tọa độ}
+\begin{lstlisting}[style=firmware,caption={Đổi tọa độ NMEA và chỉ lưu giá trị hợp lệ}]
+(*@\VNCodeComment{Tách phần độ và phút, sau đó đổi sang độ thập phân.}@*)
+double NMEA_ToDegrees(const char *value, char hemisphere) {
+  if (!value || !*value) return 0.0;
+  double raw = atof(value);
+  int degrees = (int)(raw / 100.0);
+  double minutes = raw - degrees * 100.0;
+  double result = degrees + minutes / 60.0;
+(*@\VNCodeComment{Bán cầu Nam hoặc Tây làm kết quả mang dấu âm.}@*)
+  if (hemisphere == 'S' || hemisphere == 'W') result = -result;
+  return result;
+}
+
+(*@\VNCodeComment{Loại trường rỗng, ký hiệu bán cầu sai và tọa độ vượt miền địa lý.}@*)
+bool GPS_StorePosition(const char *latitude, char northSouth,
+                       const char *longitude, char eastWest) {
+  if (!latitude || !longitude || !latitude[0] || !longitude[0]) return false;
+  if (northSouth != 'N' && northSouth != 'S') return false;
+  if (eastWest != 'E' && eastWest != 'W') return false;
+  double parsedLatitude = NMEA_ToDegrees(latitude, northSouth);
+  double parsedLongitude = NMEA_ToDegrees(longitude, eastWest);
+  if (fabs(parsedLatitude) > 90.0 ||
+      fabs(parsedLongitude) > 180.0) return false;
+(*@\VNCodeComment{Lưu tọa độ, hai cờ vị trí và thời điểm fix mới nhất cho mọi giao diện.}@*)
+  gpsLatitude = parsedLatitude;
+  gpsLongitude = parsedLongitude;
+  gpsFix = true;
+  gpsPositionKnown = true;
+  lastGPSFixMs = millis();
+  return true;
+}
+\end{lstlisting}
+
+\subsection{Tách GGA và RMC}
+\begin{lstlisting}[style=firmware,caption={Parser câu GGA/RMC sau khi checksum hợp lệ}]
+(*@\VNCodeComment{Không xử lý tiếp nếu câu NMEA sai checksum.}@*)
+void GPS_ParseSentence(const char *sentence) {
+  if (!NMEA_ChecksumOK(sentence)) return;
+  char copy[96];
+  strncpy(copy, sentence, sizeof(copy));
+  copy[sizeof(copy) - 1] = '\0';
+  char *star = strchr(copy, '*');
+  if (star) *star = '\0';
+
+(*@\VNCodeComment{Tự tách tối đa 16 trường bằng dấu phẩy, không dùng thư viện parser GPS.}@*)
+  char *fields[16] = {nullptr};
+  uint8_t count = 1;
+  fields[0] = copy;
+  for (char *p = copy; *p && count < 16; p++) {
+    if (*p == ',') {
+      *p = '\0';
+      fields[count++] = p + 1;
+    }
+  }
+  if (count == 0) return;
+  bool isGGA = strstr(fields[0], "GGA") != nullptr;
+  bool isRMC = strstr(fields[0], "RMC") != nullptr;
+
+(*@\VNCodeComment{GGA cập nhật số vệ tinh; quality bằng 0 hoặc tọa độ sai làm mất fix.}@*)
+  if (isGGA && count > 7) {
+    uint8_t quality = (uint8_t)atoi(fields[6]);
+    gpsSatellites = (uint8_t)atoi(fields[7]);
+    if (quality == 0 ||
+        !GPS_StorePosition(fields[2], fields[3][0],
+                           fields[4], fields[5][0])) {
+      gpsFix = false;
+    }
+(*@\VNCodeComment{RMC chỉ hợp lệ khi trường trạng thái bằng A và vị trí qua kiểm tra.}@*)
+  } else if (isRMC && count > 6) {
+    if (fields[2][0] != 'A' ||
+        !GPS_StorePosition(fields[3], fields[4][0],
+                           fields[5], fields[6][0])) {
+      gpsFix = false;
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Thu UART và phân loại trạng thái GPS}
+\begin{lstlisting}[style=firmware,caption={Gom dòng NMEA và trả WAIT/LOST/NOFIX/FIX}]
+(*@\VNCodeComment{Đọc hết byte chờ, cập nhật bộ đếm và thời điểm nhận gần nhất.}@*)
+void GPS_Poll() {
+  while (gpsSerial.available() > 0) {
+    char c = (char)gpsSerial.read();
+    gpsByteCount++;
+    lastGPSByteMs = millis();
+(*@\VNCodeComment{Đô-la mở câu mới; xuống dòng kết thúc câu và gọi parser.}@*)
+    if (c == '$') {
+      gpsWorkingLength = 0;
+      gpsWorking[gpsWorkingLength++] = c;
+    } else if (c == '\n') {
+      if (gpsWorkingLength > 0) {
+        gpsWorking[gpsWorkingLength] = '\0';
+        GPS_ParseSentence(gpsWorking);
+        gpsWorkingLength = 0;
+      }
+(*@\VNCodeComment{Bỏ CR và chống tràn bộ đệm 96 byte khi nối phần thân câu.}@*)
+    } else if (c != '\r' && gpsWorkingLength > 0 &&
+               gpsWorkingLength < sizeof(gpsWorking) - 1) {
+      gpsWorking[gpsWorkingLength++] = c;
+    }
+  }
+}
+
+(*@\VNCodeComment{Phân biệt chưa nhận byte, mất UART, fix còn mới và đang nhận nhưng chưa fix.}@*)
+const char *GPS_StatusText() {
+  if (gpsByteCount == 0) return "WAIT";
+  if (millis() - lastGPSByteMs > 3000) return "LOST";
+  if (gpsFix && millis() - lastGPSFixMs < 10000) return "FIX";
+  return "NOFIX";
+}
 \end{lstlisting}
 
 \section{Phân công thực hiện}
@@ -393,7 +520,7 @@ Quách Gia Thịnh & IMU/GPS, té ngã, dữ liệu vị trí/chuyển động v
 \bottomrule
 \end{tabularx}
 
-Mỗi thành viên thực hiện 30 giờ. Các phần việc được ghép và kiểm tra chung trên cùng một phiên bản chương trình.
+Các phần việc được ghép và kiểm tra chung trên cùng một phiên bản chương trình.
 
 \section{Kiểm thử và kết quả}
 
