@@ -5,6 +5,7 @@
 
 # Local build and visual-review artifacts
 tmp/
+donghothongminh/build/
 
 # Python bytecode
 __pycache__/

@@ -10,10 +10,10 @@
 
 \section{Tóm tắt đồ án}
 
-Nhóm xây dựng thiết bị nguyên mẫu dùng ESP32-S3 để đo nhịp tim, ước lượng nồng độ oxy trong máu, đếm bước, hiển thị trên OLED, phát hiện té ngã và lấy vị trí GPS. Chương trình chỉ dùng thành phần giao tiếp thuộc ESP32 Arduino Core; driver cảm biến, xử lý tín hiệu và parser được viết trong sketch.
+Nhóm xây dựng thiết bị nguyên mẫu dùng ESP32-S3 để đo nhịp tim, ước lượng nồng độ oxy trong máu, đếm bước, hiển thị trên OLED, phát hiện té ngã, lấy vị trí GPS và cung cấp dashboard qua Wi-Fi cục bộ. Chương trình chỉ dùng thành phần thuộc ESP32 Arduino Core; driver cảm biến, xử lý tín hiệu, parser và giao diện web được viết trong mã nguồn của nhóm.
 
 \begin{summarybox}[Kết quả chính]
-Ba thiết bị I2C được nhận đồng thời; màn hình hiển thị giao diện sức khỏe; MAX30102 phát hiện ngón tay và BPM hội tụ; IMU trả gia tốc nghỉ xấp xỉ 1$g$; GPS nhận NMEA, bắt FIX với 4 vệ tinh ở lần chạy cuối và xuất tọa độ. Kênh LEDC cho buzzer được khởi tạo trên GPIO42 và mã cảnh báo đã được cài đặt; âm lượng thực tế còn phụ thuộc loại loa và tầng công suất. Firmware biên dịch và nạp thành công lên ESP32-S3 N16R8. Đếm bước và té ngã đã có thuật toán nhưng vẫn cần thêm phép thử thực tế để xác định sai số.
+Ba thiết bị I2C được nhận đồng thời; OLED và dashboard hiển thị dữ liệu sức khỏe; MAX30102 phát hiện ngón tay và BPM hội tụ; IMU trả gia tốc nghỉ xấp xỉ 1$g$; GPS bắt FIX với 4 vệ tinh ở lần chạy cuối. ESP32-S3 phát mạng \Code{health-monitor}, phục vụ giao diện tại 192.168.4.1 và API JSON cập nhật mỗi giây. Kênh LEDC cho buzzer và hai thao tác web đặt lại bước/hủy cảnh báo đã được cài đặt. Đếm bước, SpO$_2$ và té ngã vẫn cần thêm hiệu chuẩn hoặc phép thử thực tế.
 \end{summarybox}
 
 \section{Đối chiếu yêu cầu nộp bài}
@@ -41,8 +41,10 @@ Báo cáo đúng tiến độ thực tế & SpO$_2$, đếm bước và té ngã
 \midrule
 Đo nhịp tim & Thu PPG IR 100 Hz, dò nhịp, làm mượt BPM & \OK\\
 Ước lượng SpO$_2$ & Ratio-of-ratios từ RED/IR, cờ chất lượng & \Pending\\
+Phản hồi nhanh & BPM sau RR hợp lệ đầu tiên; SpO$_2$ dùng cửa sổ 1 giây & \OK\\
 Đếm bước & Lọc gia tốc động, kiểm tra chu kỳ bước & \Implemented\\
 Hiển thị tại chỗ & Driver SSD1306, BPM/SpO$_2$ cỡ lớn & \OK\\
+Hiển thị trên web & Wi-Fi AP, captive portal, API JSON và dashboard responsive & \Implemented\\
 Cảnh báo té ngã & Chuỗi rơi tự do--va đập--bất động & \Implemented\\
 Định vị & UART, checksum NMEA, parser GGA/RMC & \OK\\
 Âm báo & PWM LEDC trên GPIO42, hai âm xen kẽ khi ALERT & \Implemented\\
@@ -67,12 +69,14 @@ Không dùng thư viện ngoài & Driver và parser viết trong sketch & \OK\\
 \node[block,above right=of esp] (algo) {BPM, SpO$_2$\\Chất lượng tín hiệu};
 \node[block,right=of esp] (fall) {Máy trạng thái\\phát hiện té ngã};
 \node[block,below right=of esp] (oled) {OLED SSD1306\\Giao diện/cảnh báo};
+\node[block,below=of esp] (web) {Wi-Fi AP + HTTP/DNS tự viết\\Dashboard và JSON API};
 \draw[arrow] (ppg) -- (esp);
 \draw[arrow] (imu) -- (esp);
 \draw[arrow] (gps) -- (esp);
 \draw[arrow] (esp) -- (algo);
 \draw[arrow] (esp) -- (fall);
 \draw[arrow] (esp) -- (oled);
+\draw[arrow] (esp) -- (web);
 \end{tikzpicture}
 \caption{Sơ đồ khối kiến trúc tổng thể của thiết bị.}
 \label{fig:block-architecture}
@@ -90,6 +94,7 @@ IMU tương thích MPU & I2C, 0x68 & Chung SDA/SCL & WHO\_AM\_I 0x74; đọc gia
 GPS & UART1 phần cứng & RX GPIO21, TX GPIO47 & GPS TX nối GPIO21; GPS RX nối GPIO47; 9600 baud\\
 Loa piezo/buzzer & PWM LEDC & SPK+ GPIO42, SPK- GND & Cảnh báo té ngã; camera không dùng\\
 USB & USB native & USB-Serial/JTAG & Nạp và nhật ký\\
+Dashboard web & Wi-Fi 2,4 GHz & AP 192.168.4.1 & SSID \Code{health-monitor}; mật khẩu \Code{99999999}\\
 \bottomrule
 \end{tabularx}
 
@@ -139,6 +144,7 @@ Theo yêu cầu của đồ án, chương trình chỉ dùng các thành phần 
   \item đọc thanh ghi IMU và máy trạng thái phát hiện té ngã;
   \item lọc gia tốc và xác định chuỗi bước đi;
   \item bộ đệm dòng, checksum, tách trường và đổi tọa độ NMEA;
+  \item Wi-Fi Access Point, phản hồi DNS captive portal, bộ phân tích/định tuyến HTTP, API JSON và dashboard responsive do nhóm tự viết;
   \item bộ lập lịch theo thời gian và cơ chế phát hiện lại thiết bị.
 \end{itemize}
 
@@ -150,16 +156,18 @@ Theo yêu cầu của đồ án, chương trình chỉ dùng các thành phần 
 \Code{Arduino.h} & ESP32 Arduino Core & GPIO, thời gian, LEDC và hàm nền tảng\\
 \Code{Wire.h} & ESP32 Arduino Core & Chỉ thực hiện giao tiếp I2C được giảng viên cho phép\\
 \Code{HardwareSerial.h} & ESP32 Arduino Core & Nhận byte UART từ GPS\\
+\Code{WiFi.h} & ESP32 Arduino Core & Điều khiển radio, Access Point và socket TCP\\
+\Code{WiFiUdp.h} & ESP32 Arduino Core & Truyền/nhận datagram UDP mức thấp\\
 \Code{math.h} & Thư viện chuẩn C/C++ & Căn bậc hai, trị tuyệt đối\\
 \bottomrule
 \end{tabularx}
 \normalsize
 
-Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư viện MPU hay thư viện xử lý tín hiệu. Vì vậy, việc đổi dữ liệu thô thành BPM, SpO$_2$, bước chân, trạng thái té ngã và tọa độ đều nằm trong mã nguồn của nhóm.
+Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư viện MPU, WebServer, DNSServer hay thư viện xử lý tín hiệu. Driver cảm biến, thuật toán, parser NMEA, parser/router HTTP, JSON và phản hồi DNS đều nằm trong mã nguồn của nhóm. \Code{WiFi.h} và \Code{WiFiUdp.h} chỉ là lớp phần cứng/socket bắt buộc thuộc ESP32 Arduino Core.
 
 \subsection{Luồng vòng lặp chính}
 
-Ở mỗi vòng lặp, chương trình đọc hết byte GPS đang chờ và rút FIFO PPG. Theo các mốc thời gian riêng, chương trình cập nhật IMU, máy trạng thái té ngã, OLED và nhật ký. Không có trì hoãn dài nên các nguồn dữ liệu tốc độ khác nhau vẫn hoạt động đồng thời.
+Ở mỗi vòng lặp, chương trình xử lý nhanh DNS/HTTP đang chờ, đọc hết byte GPS và rút FIFO PPG. Theo các mốc thời gian riêng, chương trình cập nhật IMU, máy trạng thái té ngã, OLED và nhật ký. Không có trì hoãn dài nên các nguồn dữ liệu tốc độ khác nhau và dashboard vẫn hoạt động đồng thời.
 
 \Needspace{0.38\textheight}
 \begin{figure}[htbp]
@@ -172,7 +180,7 @@ Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư vi�
   label/.style={font=\scriptsize,fill=white,inner sep=1pt}
 ]
 \node[process] (start) {Bắt đầu một vòng \Code{loop()}};
-\node[process,below=of start] (read) {Đọc hết byte GPS đang chờ\\Rút và xử lý FIFO PPG};
+\node[process,below=of start] (read) {Xử lý DNS/HTTP đang chờ\\Đọc GPS và rút FIFO PPG};
 \node[decision,below=of read] (due) {Đến mốc thời gian\\của tác vụ?};
 \node[process,below=of due] (tasks) {Cập nhật IMU, phát hiện té ngã\\OLED, buzzer và nhật ký};
 \node[process,right=of due] (recover) {Kiểm tra trạng thái\\và phát hiện lại thiết bị};
@@ -187,9 +195,22 @@ Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư vi�
 \label{fig:main-loop-flow}
 \end{figure}
 
-\subsection{Giao diện hiển thị}
+\subsection{Giao diện OLED}
 
 Màn hình chính ưu tiên BPM và SpO$_2$ bằng ký tự cỡ lớn. Các hàng dưới hiển thị hướng dẫn đo, số bước, trạng thái té ngã, GPS, số vệ tinh/gia tốc hoặc tọa độ luân phiên. Khi có té ngã, toàn màn hình chuyển sang cảnh báo khẩn; nếu GPS vừa mất fix, màn hình dùng tọa độ hợp lệ gần nhất và ký hiệu \Code{L-LAT}/\Code{L-LON}. Các số chân đấu nối không xuất hiện trên giao diện người dùng.
+
+\subsection{Giao diện web qua Wi-Fi}
+
+ESP32-S3 tạo Access Point \Code{health-monitor} với mật khẩu \Code{99999999}. Sau khi kết nối, người dùng mở \path{http://192.168.4.1}. Tài nguyên HTML/CSS/JavaScript nằm trong flash và không dùng CDN. API tại \path{/api/status} trả BPM, SpO$_2$, chất lượng PPG, dữ liệu thô, số bước, trạng thái té ngã, gia tốc, trạng thái từng mô-đun, GPS, vệ tinh, tọa độ, uptime và số máy khách.
+
+Hai endpoint POST cho phép đặt lại số bước và hủy cảnh báo. Dashboard chỉ hiện số sức khỏe khi cờ hợp lệ tương ứng là đúng; liên kết bản đồ chỉ được mở khi hệ thống đã từng nhận tọa độ hợp lệ.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth,height=8.6cm,keepaspectratio]{assets/web/dashboard_preview.png}
+  \caption{Dashboard web responsive được render với dữ liệu minh họa để kiểm tra bố cục. Khi chạy trên ESP32-S3, trang lấy dữ liệu thực từ API JSON mỗi giây.}
+  \label{fig:web-dashboard}
+\end{figure}
 
 \section{Thuật toán các mô-đun}
 
@@ -315,9 +336,9 @@ return checksum == expected;
 \toprule
 \textbf{Thành viên} & \textbf{Phần việc chính} & \textbf{Tỷ lệ}\\
 \midrule
-Phạm Hùng Tiến & Tích hợp, I2C, SSD1306, giao diện, lịch chạy, cấu hình/nạp và kiểm thử tổng & 33,4\%\\
-Hồ Sĩ Phú & MAX30102, FIFO, xử lý PPG, BPM, SpO$_2$, chất lượng và hiệu chuẩn & 33,3\%\\
-Quách Gia Thịnh & IMU, đếm bước, máy trạng thái té ngã, UART GPS, checksum và parser NMEA & 33,3\%\\
+Phạm Hùng Tiến & Tích hợp, I2C/OLED, Wi-Fi AP, HTTP/DNS tự viết, khung dashboard, lịch chạy và kiểm thử tổng & 33,4\%\\
+Hồ Sĩ Phú & MAX30102/PPG, BPM, SpO$_2$, chất lượng và hợp đồng dữ liệu PPG cho web & 33,3\%\\
+Quách Gia Thịnh & IMU/GPS, té ngã, dữ liệu vị trí/chuyển động và thao tác điều khiển web & 33,3\%\\
 \bottomrule
 \end{tabularx}
 
@@ -343,13 +364,18 @@ Gia tốc nghỉ & 1,07--1,08$g$ & \OK\\
 MAX30102 rời tay & IR 330--400, kết quả ở WAIT & \OK\\
 MAX30102 đặt tay & IR 132.000--137.000 & \OK\\
 Nhịp tim & BPM quan sát khoảng 72--83 qua các lần thử & \OK\\
+Thời gian PPG tổng hợp & BPM đầu tiên không quá 1,9 giây; SpO$_2$ được xét từ 1,2 giây sau khi BPM hợp lệ & \OK\\
+Dạng sóng PPG đảo & Bộ dò tự nhận cực tính dương/âm và vẫn khôi phục đúng BPM & \OK\\
 SpO$_2$ nguyên mẫu & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Luồng GPS & Hơn 7.000 byte NMEA; không mất UART & \OK\\
 GPS có vị trí & FIX, 4 vệ tinh ở lần chạy cuối, có vĩ/kinh độ & \OK\\
 Buzzer/LEDC & Kênh PWM khởi tạo thành công; chưa đo mức âm thực tế & \Implemented\\
+Wi-Fi Access Point & SSID \Code{health-monitor}; IP 192.168.4.1; dashboard và API phản hồi & \Implemented\\
+Dashboard responsive & Hiển thị đủ PPG, bước, té ngã, thiết bị, GPS và trạng thái hệ thống & \OK\\
+Điều khiển web & Đặt lại bước và hủy cảnh báo trả JSON thành công & \OK\\
 Té ngã mô phỏng & Chuỗi đầy đủ vào ALERT; chuỗi thiếu va đập về NORMAL & \OK\\
 Té ngã thực tế & Chưa thử ngã người thật; chỉ mới kiểm tra logic và ngưỡng trên mô hình & \NeedTest\\
-Biên dịch & 358.067 byte flash (11\%), RAM 25.732 byte (7\%) & \OK\\
+Biên dịch & 969.010 byte flash (30\%), RAM 49.956 byte (15\%) & \OK\\
 Nạp phần cứng & Xác minh hash, hard reset thành công & \OK\\
 \bottomrule
 \end{longtable}
@@ -362,17 +388,18 @@ Các ca mô phỏng được tái lập bằng tệp \path{tests/algorithm_selfc
   \item SpO$_2$ chưa được hiệu chuẩn bằng thiết bị y tế tham chiếu, vì vậy chỉ mang tính học thuật.
   \item Chuyển động ngón tay, ánh sáng ngoài và lực ép làm giảm độ tin cậy PPG.
   \item GPS trong nhà có thể ở NOFIX hoặc số vệ tinh thấp; cần thử ngoài trời.
+  \item Dashboard hiện dùng mạng cục bộ với một mật khẩu dùng chung; chưa có tài khoản, HTTPS hoặc phân quyền thao tác.
   \item Ngưỡng té ngã cần được đánh giá trên nhiều tư thế và đối tượng nhưng phải dùng đệm, dây giữ và quy trình an toàn.
   \item Nguyên mẫu chưa có quản lý pin, vỏ đeo, động cơ rung, nút hủy cảnh báo và kênh gửi cảnh báo từ xa.
 \end{itemize}
 
 \section{Hướng phát triển}
 
-Nhóm đề xuất bổ sung nút SOS/hủy và động cơ rung; hiệu chuẩn SpO$_2$ bằng tập dữ liệu đối chứng; ghi lịch sử đo; dùng BLE/Wi-Fi/LTE để gửi cảnh báo; tối ưu tiêu thụ điện; thiết kế PCB và vỏ đeo. Đối với té ngã, ngưỡng cố định có thể được thay bằng mô hình thích nghi sau khi có bộ dữ liệu thử nghiệm đủ lớn.
+Nhóm đề xuất bổ sung nút SOS/hủy vật lý và động cơ rung; hiệu chuẩn SpO$_2$; ghi lịch sử đo; thêm xác thực web; dùng BLE/Wi-Fi STA/LTE để gửi cảnh báo ra ngoài mạng cục bộ; tối ưu tiêu thụ điện; thiết kế PCB và vỏ đeo. Đối với té ngã, ngưỡng cố định có thể được thay bằng mô hình thích nghi sau khi có bộ dữ liệu thử nghiệm đủ lớn.
 
 \section{Kết luận}
 
-Mô hình đã đọc được các cảm biến, hiển thị số đo, nhận vị trí GPS và có luồng điều khiển màn hình/loa khi máy trạng thái té ngã được kích hoạt. Qua quá trình thực hiện, nhóm nắm được cách tổ chức dữ liệu từ nhiều thiết bị có tốc độ khác nhau trên ESP32-S3. Trước khi sử dụng thực tế, sản phẩm cần được hiệu chuẩn, thử nghiệm an toàn và hoàn thiện phần nguồn, vỏ đeo và truyền tin.
+Mô hình đã đọc cảm biến, hiển thị số đo trên OLED và web, nhận vị trí GPS, đồng thời điều khiển màn hình/loa khi máy trạng thái té ngã được kích hoạt. Kiến trúc không chặn cho phép cảm biến và dịch vụ HTTP/DNS tự viết dùng chung ESP32-S3. Trước khi sử dụng thực tế, sản phẩm cần được hiệu chuẩn, thử nghiệm an toàn và hoàn thiện bảo mật, nguồn, vỏ đeo cùng kênh truyền tin từ xa.
 
 \section*{Tài liệu tham khảo}
 \addcontentsline{toc}{section}{Tài liệu tham khảo}

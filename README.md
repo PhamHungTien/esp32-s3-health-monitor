@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-F4A261)](LICENSE)
 [![Status](https://img.shields.io/badge/status-academic%20prototype-F4A261)](#safety-and-limitations)
 
-An academic wearable prototype built around the ESP32-S3 N16R8. The system measures heart rate, estimates blood oxygen saturation, counts steps, detects possible falls, receives GPS coordinates, displays live status on an OLED, and drives an audible alert.
+An academic wearable prototype built around the ESP32-S3 N16R8. The system measures heart rate, estimates blood oxygen saturation, counts steps, detects possible falls, receives GPS coordinates, displays live status on an OLED, drives an audible alert, and exposes a responsive local web dashboard over its own Wi-Fi access point.
 
 The sensor drivers, display routines, signal processing, fall-detection state machine, step counter, and NMEA parser are implemented directly in the Arduino sketch. No third-party sensor, display, GPS, or signal-processing library is used.
 
@@ -16,8 +16,8 @@ The sensor drivers, display routines, signal processing, fall-detection state ma
 ## Features
 
 - Heart-rate measurement from MAX30102 infrared PPG samples.
-- Immediate BPM output after the first valid RR interval, followed by filtered updates.
-- Experimental SpO2 estimation using the RED/IR ratio-of-ratios method.
+- Immediate BPM output after the first valid RR interval; the synthetic low-perfusion test produces its first result within 1.9 seconds.
+- Experimental SpO2 estimation using a one-second RED/IR ratio-of-ratios window, eligible from about 1.2 seconds after finger detection.
 - Finger-presence detection with separate activation and release thresholds.
 - Step counting from filtered three-axis acceleration.
 - Fall detection using a `NORMAL -> FREE_FALL -> IMPACT -> ALERT` state machine.
@@ -27,6 +27,8 @@ The sensor drivers, display routines, signal processing, fall-detection state ma
 - Non-blocking task scheduling based on `millis()`.
 - Automatic I2C device re-probing after a disconnection.
 - Serial diagnostics at 115200 baud.
+- Built-in Wi-Fi access point and captive dashboard with a live JSON API.
+- Web controls for resetting the step counter and cancelling a fall alert.
 
 ## Hardware
 
@@ -65,9 +67,11 @@ The firmware only uses components supplied with the ESP32 Arduino Core:
 - `Arduino.h`
 - `Wire.h`
 - `HardwareSerial.h`
+- `WiFi.h`
+- `WiFiUdp.h`
 - the standard C/C++ math functions
 
-No Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, MPU, or external signal-processing library is required.
+No Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, MPU, web-server, DNS-server, or external signal-processing library is required. The application-level HTTP parser, router, JSON response, and captive-portal DNS response are implemented directly in the sketch on top of the TCP/UDP transport supplied by the ESP32 Arduino Core.
 
 ## Arduino configuration
 
@@ -98,14 +102,30 @@ A normal startup should identify the OLED, IMU, MAX30102, buzzer channel, and GP
 
 If uploading fails, hold the board's BOOT button, press and release RESET, start the upload, and then release BOOT when the connection begins. Recheck the selected port after every reset because the USB device name may change.
 
+## Wi-Fi dashboard
+
+The ESP32-S3 creates a local access point; no router or Internet connection is required.
+
+| Setting | Value |
+|---|---|
+| Wi-Fi name (SSID) | `health-monitor` |
+| Password | `99999999` |
+| Dashboard | `http://192.168.4.1` |
+| Live data API | `http://192.168.4.1/api/status` |
+
+After joining the network, the phone may open the captive dashboard automatically. If it does not, open `http://192.168.4.1` manually. The page updates once per second and displays BPM, experimental SpO2, PPG quality, raw IR, steps, fall state, acceleration, module health, GPS state, satellites, coordinates, uptime, and connected-client count.
+
+The dashboard also provides local controls to reset the step count and cancel a fall alert. These controls are available only to clients connected to the device access point.
+
 ## Operating the prototype
 
 1. Keep the device still during startup.
 2. Place a fingertip steadily over the MAX30102 LEDs and photodiode.
-3. Wait for a valid pulse interval; the first valid BPM is displayed immediately.
-4. Keep the finger still while the SpO2 estimate is calculated over a longer sample window.
+3. Keep the finger still; the first valid BPM is displayed after one complete RR interval.
+4. The first SpO2 estimate becomes eligible from about 1.2 seconds after finger detection.
 5. Move the GPS antenna to an open outdoor area for faster satellite acquisition.
 6. Check the OLED and Serial Monitor for sensor, GPS, step, and fall-state information.
+7. Join the `health-monitor` Wi-Fi network using password `99999999`, then open `http://192.168.4.1` for the full dashboard.
 
 OLED GPS states:
 
@@ -118,7 +138,7 @@ OLED GPS states:
 
 ### Heart rate and SpO2
 
-The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-bit conversion, a 4096 nA ADC range, and approximately 8.6 mA on each LED. A slow estimator separates the DC component, while filtered AC samples are used for pulse detection. The adaptive beat detector requires a positive phase before accepting a negative local minimum, preventing repeated triggers within one pulse while remaining responsive to low-amplitude signals. BPM is calculated from valid RR intervals. SpO2 is estimated from the normalized RED and IR AC/DC ratio and then bounded to the prototype's display range.
+The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-bit conversion, a 4096 nA ADC range, and approximately 8.6 mA on each LED. A fast 250 ms settling stage estimates the DC component. The adaptive beat detector automatically locks to the first reliable positive or negative threshold-crossing polarity, then timestamps the same phase on every pulse. This avoids failure when the waveform is inverted by sensor orientation, finger pressure, or optical geometry. BPM is shown after the first valid RR interval in the 40--180 BPM range. SpO2 is estimated from a one-second normalized RED and IR AC/DC window, becomes eligible after BPM is valid and at least 1.2 seconds have elapsed, and remains an uncalibrated prototype value.
 
 After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. Results are never carried into the next finger-contact session, preventing a new user from seeing the previous user's measurements.
 
@@ -151,7 +171,8 @@ The tests use only the Python standard library and mirror the firmware threshold
 ```text
 .
 ├── donghothongminh/
-│   └── donghothongminh.ino       # Complete ESP32-S3 firmware
+│   ├── donghothongminh.ino       # Complete ESP32-S3 firmware
+│   └── web_dashboard.h           # Embedded responsive Wi-Fi dashboard
 ├── reports_latex/                 # LaTeX source for group and individual reports
 ├── output/pdf/                    # Compiled submission-ready reports
 ├── tests/
@@ -183,9 +204,9 @@ This project was developed by students from the Faculty of Electronics and Telec
 
 | Member | Student ID | Primary responsibility |
 |---|---:|---|
-| Pham Hung Tien | 24207043 | System integration, I2C, OLED interface, scheduling, and upload workflow |
-| Ho Si Phu | 24207101 | MAX30102 acquisition, PPG processing, heart rate, and SpO2 estimation |
-| Quach Gia Thinh | 24207105 | IMU processing, step counting, fall detection, GPS, and NMEA parsing |
+| Pham Hung Tien | 24207043 | System integration, I2C/OLED, Wi-Fi AP, self-written HTTP/DNS services, dashboard layout, and scheduling |
+| Ho Si Phu | 24207101 | MAX30102/PPG processing and the BPM, SpO2, quality, and finger-state web data contract |
+| Quach Gia Thinh | 24207105 | IMU/GPS algorithms and the step, fall, acceleration, location, and web-control data contract |
 
 ## License
 

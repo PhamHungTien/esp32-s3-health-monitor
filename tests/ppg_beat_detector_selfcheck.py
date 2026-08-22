@@ -15,30 +15,41 @@ class BeatDetector:
         self.previous_filtered = 0.0
         self.previous_slope = 0.0
         self.envelope = 0.0
-        # Trạng thái ngay sau 400 ms khởi tạo: đáy đầu tiên được dùng làm mốc RR.
-        self.beat_armed = True
+        # Sau 250 ms khởi tạo, chờ tín hiệu đi qua vùng giữa trước khi lấy mốc.
+        self.beat_armed = False
         self.last_beat_ms = 0
+        self.pulse_polarity = 0
         self.bpm: float | None = None
         self.first_result_ms: int | None = None
 
     def process(self, filtered: float, now_ms: int) -> None:
         self.envelope += 0.025 * (abs(filtered) - self.envelope)
         slope = filtered - self.previous_filtered
-        threshold = max(35.0, self.envelope * 0.55)
+        threshold = max(22.0, self.envelope * 0.55)
 
-        if filtered > threshold * 0.45:
+        crossed_positive = self.previous_filtered <= threshold < filtered
+        crossed_negative = self.previous_filtered >= -threshold > filtered
+        if self.pulse_polarity == 0 and abs(filtered) < threshold * 0.25:
             self.beat_armed = True
-
-        local_minimum = self.previous_slope < 0.0 <= slope
+        elif self.pulse_polarity > 0 and filtered < -threshold * 0.45:
+            self.beat_armed = True
+        elif self.pulse_polarity < 0 and filtered > threshold * 0.45:
+            self.beat_armed = True
+        selected_edge = (
+            crossed_positive or crossed_negative
+            if self.pulse_polarity == 0
+            else crossed_positive if self.pulse_polarity > 0 else crossed_negative
+        )
         outside_refractory = (
             self.last_beat_ms == 0 or now_ms - self.last_beat_ms > 280
         )
         if (
             self.beat_armed
-            and local_minimum
-            and self.previous_filtered < -threshold
+            and selected_edge
             and outside_refractory
         ):
+            if self.pulse_polarity == 0:
+                self.pulse_polarity = 1 if crossed_positive else -1
             self.beat_armed = False
             if self.last_beat_ms == 0:
                 self.last_beat_ms = now_ms
@@ -60,7 +71,7 @@ def feed_sine(detector: BeatDetector, bpm: float, amplitude: float,
               duration_ms: int, noise: float = 0.0) -> None:
     generator = random.Random(20260804)
     period_ms = 60000.0 / bpm
-    for now_ms in range(400, duration_ms, 10):
+    for now_ms in range(250, duration_ms, 10):
         signal = amplitude * math.sin(2.0 * math.pi * now_ms / period_ms)
         signal += generator.uniform(-noise, noise)
         detector.process(signal, now_ms)
@@ -71,7 +82,7 @@ def main() -> None:
     feed_sine(normal, bpm=75.0, amplitude=80.0, duration_ms=5000, noise=8.0)
     assert normal.bpm is not None
     assert abs(normal.bpm - 75.0) < 3.0
-    assert normal.first_result_ms is not None and normal.first_result_ms <= 2400
+    assert normal.first_result_ms is not None and normal.first_result_ms <= 1900
 
     low_perfusion = BeatDetector()
     feed_sine(low_perfusion, bpm=60.0, amplitude=48.0,
@@ -79,15 +90,22 @@ def main() -> None:
     assert low_perfusion.bpm is not None
     assert abs(low_perfusion.bpm - 60.0) < 3.0
 
+    inverted = BeatDetector()
+    feed_sine(inverted, bpm=72.0, amplitude=-55.0,
+              duration_ms=5000, noise=4.0)
+    assert inverted.bpm is not None
+    assert abs(inverted.bpm - 72.0) < 3.0
+
     noise_only = BeatDetector()
     generator = random.Random(42)
-    for now_ms in range(400, 6000, 10):
+    for now_ms in range(250, 6000, 10):
         noise_only.process(generator.uniform(-20.0, 20.0), now_ms)
     assert noise_only.bpm is None
 
     print("PPG_NORMAL_SIGNAL_BPM=PASS")
-    print("PPG_FIRST_RESULT_WITHIN_2_4S=PASS")
+    print("PPG_FIRST_RESULT_WITHIN_1_9S=PASS")
     print("PPG_LOW_PERFUSION_SIGNAL_BPM=PASS")
+    print("PPG_AUTO_POLARITY_SIGNAL_BPM=PASS")
     print("PPG_NOISE_REJECTION=PASS")
 
 

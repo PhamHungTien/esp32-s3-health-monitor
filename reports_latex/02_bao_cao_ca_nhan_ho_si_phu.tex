@@ -6,12 +6,12 @@
 \MakeReportCover{BÁO CÁO CÔNG VIỆC CÁ NHÂN}{Hồ Sĩ Phú}{24207101}{Đo nhịp tim và ước lượng SpO$_2$ bằng MAX30102}
 
 \begin{summarybox}[Nội dung phụ trách]
-Trong đồ án, em phụ trách cảm biến MAX30102: cấu hình thanh ghi, đọc FIFO, xử lý tín hiệu RED/IR, phát hiện ngón tay, tính nhịp tim và ước lượng SpO$_2$.
+Trong đồ án, em phụ trách MAX30102, xử lý RED/IR, nhịp tim, SpO$_2$ và hợp đồng dữ liệu PPG dùng chung cho OLED, nhật ký nối tiếp và dashboard web.
 \end{summarybox}
 
 \section{Mục tiêu công việc}
 
-Phần xử lý cần chuyển dữ liệu RED/IR thành BPM và SpO$_2$, đồng thời nhận biết trường hợp chưa đặt ngón tay hoặc tín hiệu chưa ổn định. Giá trị chỉ được hiển thị khi thỏa các điều kiện về biên độ và khoảng nhịp.
+Phần xử lý cần chuyển dữ liệu RED/IR thành BPM và SpO$_2$, đồng thời nhận biết trường hợp chưa đặt ngón tay hoặc tín hiệu chưa ổn định. Giá trị chỉ được công bố cho OLED và API web khi thỏa các điều kiện về biên độ, khoảng nhịp và chất lượng.
 
 \section{Công việc đã thực hiện}
 
@@ -36,7 +36,7 @@ Em cấu hình MAX30102 bằng các thanh ghi điều khiển: reset, con trỏ 
 0x04--0x06 & 0x00 & Xóa con trỏ ghi, tràn và đọc FIFO\\
 0x08 & 0x1F & Cho phép FIFO quay vòng, không lấy trung bình trong chip\\
 0x0A & 0x27 & Thang ADC 4.096 nA, 100 mẫu/giây, xung 411 $\mu$s\\
-0x0C/0x0D & 0x24 & Dòng LED đỏ và hồng ngoại khoảng 7,2 mA\\
+0x0C/0x0D & 0x2C & Dòng LED đỏ và hồng ngoại khoảng 8,6 mA\\
 \bottomrule
 \end{tabularx}
 \normalsize
@@ -86,17 +86,17 @@ if (!ppg.fingerPresent) {
 
 \subsection{Thuật toán nhịp tim}
 
-Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,8 giây đầu, bộ lọc bám nhanh theo mức DC để loại xung lớn khi vừa đặt tay. Sau đó, đáy cục bộ vượt ngưỡng thích nghi được dùng làm mốc nhịp; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
+Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,25 giây đầu, bộ lọc bám nhanh theo mức DC để loại xung lớn khi vừa đặt tay. Sau đó, bộ dò tự khóa vào cạnh dương hoặc cạnh âm xuất hiện đáng tin cậy đầu tiên và chỉ dùng lại đúng cực tính đó ở các chu kỳ sau. Cơ chế này tránh tình trạng không có BPM khi dạng sóng bị đảo bởi hướng cảm biến, áp lực ngón tay hoặc hình học quang; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
 
 \[
   \mathrm{BPM}=\frac{60\,000}{\Delta t_{\mathrm{ms}}}.
 \]
 
-Chỉ các giá trị trong miền sinh lý được đưa vào bộ làm mượt. Chương trình bỏ 0,8 giây đầu để đường nền ổn định; khoảng RR hợp lệ đầu tiên sau đó được hiển thị ngay. Các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Trong điều kiện đặt tay tốt, kết quả thường xuất hiện sau khoảng 2--3 giây.
+Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mượt. Khoảng RR hợp lệ đầu tiên được hiển thị ngay, không chờ thêm nhiều nhịp; các nhịp kế tiếp chỉ được dùng nếu không lệch quá 22 BPM so với giá trị đang có. Bài thử tổng hợp xác nhận kết quả đầu tiên xuất hiện trong 1,9 giây; thời gian thực tế vẫn phụ thuộc nhịp tim, mức tưới máu, chuyển động và cách che cảm biến.
 
 \subsection{\texorpdfstring{Ước lượng SpO$_2$}{Ước lượng SpO2}}
 
-Trong mỗi cửa sổ, em tính thành phần DC và độ mạnh AC của hai kênh. Tỷ số chuẩn hóa được xác định bởi:
+Trong mỗi cửa sổ một giây gồm 100 mẫu, em tính thành phần DC và độ mạnh AC của hai kênh. Cửa sổ đầu tiên được xét từ mốc 1,2 giây sau khi nhận ngón tay; SpO$_2$ chỉ xuất khi BPM đã hợp lệ để loại lần chạm hoặc chuyển động không có nhịp. Vì vậy kết quả thường xuất hiện tại cửa sổ một hoặc hai, nhanh hơn thời gian chờ hơn bốn giây trước đây. Tỷ số chuẩn hóa được xác định bởi:
 
 \[
  R=\frac{AC_{RED}/DC_{RED}}{AC_{IR}/DC_{IR}},
@@ -115,51 +115,33 @@ Giá trị SpO$_2$ hiện là ước lượng phục vụ đồ án, chưa phả
 
 \subsection{Xác nhận nhịp và khởi tạo BPM}
 
-Bộ dò sử dụng đáy cục bộ, ngưỡng theo biên độ tín hiệu và khoảng trơ 450 ms. Khoảng RR hợp lệ đầu tiên được xuất ngay; các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
+Bộ dò sử dụng cạnh vượt ngưỡng theo biên độ tín hiệu và khoảng trơ 280 ms. Khoảng RR hợp lệ đầu tiên được xuất ngay; các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
 
-\Needspace{0.42\textheight}
+\Needspace{0.34\textheight}
 \begin{lstlisting}[style=firmware,caption={Điều kiện phát hiện nhịp và hiển thị BPM sớm}]
-(*@\VNCodeComment{Tính độ dốc của tín hiệu đã lọc so với mẫu ngay trước đó.}@*)
-float slope = state.filtered - state.previousFiltered;
-(*@\VNCodeComment{Đặt ngưỡng đỉnh bằng 95\% biên độ bao hiện tại để ngưỡng tự thích nghi với cường độ tín hiệu.}@*)
-float peakThreshold = state.envelope * 0.95f;
-(*@\VNCodeComment{Giới hạn ngưỡng tối thiểu ở 100 để nhiễu nhỏ không bị nhận nhầm thành nhịp.}@*)
-if (peakThreshold < 100.0f) peakThreshold = 100.0f;
-(*@\VNCodeComment{Dòng trống phân tách bước chuẩn bị ngưỡng với bước xác nhận đỉnh.}@*)
-
-(*@\VNCodeComment{Phát hiện thời điểm độ dốc đổi từ âm sang không âm, tức một cực tiểu của dạng sóng đã đảo.}@*)
-if (state.previousSlope < 0.0f && slope >= 0.0f &&
-(*@\VNCodeComment{Yêu cầu biên độ cực tiểu vượt ngưỡng thích nghi vừa tính.}@*)
-    state.previousFiltered < -peakThreshold &&
-(*@\VNCodeComment{Buộc hai nhịp cách nhau hơn 450 ms để loại bỏ đỉnh giả quá gần.}@*)
-    now - ppg.lastBeatMs > 450) {
-(*@\VNCodeComment{Chỉ tính khoảng RR khi hệ thống đã lưu được thời điểm của một nhịp trước.}@*)
-  if (ppg.lastBeatMs != 0) {
-(*@\VNCodeComment{Tính khoảng thời gian giữa hai nhịp liên tiếp theo mili giây.}@*)
-    uint32_t interval = now - ppg.lastBeatMs;
-(*@\VNCodeComment{Chỉ chấp nhận khoảng RR từ 480 đến 1.500 ms, tương ứng vùng nhịp hợp lý của nguyên mẫu.}@*)
-    if (interval >= 480 && interval <= 1500) {
-(*@\VNCodeComment{Đổi khoảng RR sang nhịp mỗi phút bằng công thức 60.000 chia cho số mili giây.}@*)
-      float instantBPM = 60000.0f / interval;
-(*@\VNCodeComment{Kiểm tra đây có phải giá trị BPM hợp lệ đầu tiên của phiên đo hay không.}@*)
-      if (!ppg.heartRateValid) {
-(*@\VNCodeComment{Hiển thị trực tiếp BPM tức thời ở nhịp hợp lệ đầu tiên.}@*)
-        ppg.bpm = instantBPM;
-(*@\VNCodeComment{Đánh dấu BPM đã sẵn sàng để giao diện không tiếp tục hiện dấu chờ.}@*)
-        ppg.heartRateValid = true;
-(*@\VNCodeComment{Với các nhịp sau, chỉ nhận giá trị mới nếu chênh lệch không quá 22 BPM.}@*)
-      } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
-(*@\VNCodeComment{Làm mượt bằng 80\% giá trị cũ và 20\% giá trị mới để giảm rung số.}@*)
-        ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
-(*@\VNCodeComment{Kết thúc nhánh cập nhật BPM sau khi đã có kết quả trước đó.}@*)
-      }
-(*@\VNCodeComment{Kết thúc khối kiểm tra khoảng RR hợp lệ.}@*)
-    }
-(*@\VNCodeComment{Kết thúc khối yêu cầu phải có nhịp trước.}@*)
+(*@\VNCodeComment{Tạo ngưỡng thích nghi theo biên độ bao và giữ sàn 22 để loại nhiễu nhỏ.}@*)
+float peakThreshold = max(22.0f, state.envelope * 0.55f);
+(*@\VNCodeComment{Tìm đồng thời cạnh dương và cạnh âm vì dạng sóng thực tế có thể bị đảo.}@*)
+bool crossedPositive = state.previousFiltered <= peakThreshold &&
+                       state.filtered > peakThreshold;
+bool crossedNegative = state.previousFiltered >= -peakThreshold &&
+                       state.filtered < -peakThreshold;
+(*@\VNCodeComment{Sau lần khóa đầu, chỉ dùng lại đúng cực tính để mỗi chu kỳ có một mốc ổn định.}@*)
+bool crossed = state.pulsePolarity == 0 ?
+                 (crossedPositive || crossedNegative) :
+                 (state.pulsePolarity > 0 ? crossedPositive : crossedNegative);
+(*@\VNCodeComment{Khoảng trơ 280 ms ngăn một chu kỳ tạo ra nhiều mốc nhịp.}@*)
+if (state.beatArmed && crossed &&
+    (ppg.lastBeatMs == 0 || now - ppg.lastBeatMs > 280)) {
+(*@\VNCodeComment{Ghi nhớ cực tính ở nhịp đầu để các nhịp sau không đổi cạnh giữa chừng.}@*)
+  if (state.pulsePolarity == 0)
+    state.pulsePolarity = crossedPositive ? 1 : -1;
+  uint32_t interval = now - ppg.lastBeatMs;
+(*@\VNCodeComment{Khoảng RR đầu tiên trong miền 40--180 BPM được xuất ngay lên giao diện.}@*)
+  if (ppg.lastBeatMs != 0 && interval >= 333 && interval <= 1500) {
+    ppg.bpm = 60000.0f / interval;
+    ppg.heartRateValid = true;
   }
-(*@\VNCodeComment{Lưu thời điểm đỉnh hiện tại; đỉnh này sẽ làm mốc cho lần tính RR tiếp theo.}@*)
-  ppg.lastBeatMs = now;
-(*@\VNCodeComment{Kết thúc điều kiện xác nhận đỉnh nhịp.}@*)
 }
 \end{lstlisting}
 
@@ -196,6 +178,12 @@ if (ratio > 0.2f && ratio < 2.0f) {
 
 Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem chúng là hệ số y tế đã hiệu chuẩn.
 
+\subsection{Hợp đồng dữ liệu PPG cho dashboard}
+
+Em xác định nhóm trường PPG trong API gồm \Code{fingerPresent}, \Code{heartRateValid}, \Code{spo2Valid}, \Code{bpm}, \Code{spo2}, \Code{signalQuality}, \Code{redRaw} và \Code{irRaw}. Giao diện chỉ hiện BPM/SpO$_2$ khi cờ tương ứng hợp lệ; khi chưa đặt tay, thẻ số đo dùng ký hiệu chờ thay vì giữ số của phiên trước. Thanh chất lượng được giới hạn 0--100\% và dữ liệu thô được dùng để hỗ trợ chẩn đoán tín hiệu, không được trình bày như chỉ số sức khỏe.
+
+Việc tách trạng thái hợp lệ khỏi giá trị số giúp OLED, Serial và web dùng cùng một nguồn sự thật. Nhờ đó, dashboard không tự suy diễn trạng thái từ số 0 và không hiển thị nhầm kết quả cũ sau khi đổi người đo.
+
 \section{Nhật ký khối lượng}
 
 \begin{tabularx}{\textwidth}{L{7.6cm} C{2.1cm} Y}
@@ -204,10 +192,11 @@ Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem 
 \midrule
 Cấu hình thanh ghi và FIFO 100 Hz & 5 giờ & Luồng RED/IR liên tục\\
 Phát hiện ngón tay và reset trạng thái & 4 giờ & Không xuất số khi rời tay\\
-Lọc DC/AC và ngưỡng thích nghi & 5 giờ & Tín hiệu xung ổn định\\
-Phát hiện nhịp, khoảng trơ, BPM & 7 giờ & BPM quan sát 72--83\\
-Ratio-of-ratios và làm mượt SpO$_2$ & 6 giờ & Giá trị cùng cờ hợp lệ\\
+Lọc DC/AC và ngưỡng thích nghi & 4 giờ & Tín hiệu xung ổn định\\
+Phát hiện nhịp, khoảng trơ, BPM & 6 giờ & BPM quan sát 72--83\\
+Ratio-of-ratios và làm mượt SpO$_2$ & 5 giờ & Giá trị cùng cờ hợp lệ\\
 Đánh giá chất lượng, thử nghiệm & 3 giờ & $Q$, bảng kết quả và giới hạn\\
+Hợp đồng dữ liệu và kiểm tra dashboard & 3 giờ & Trường JSON và quy tắc hiển thị PPG\\
 \midrule
 \textbf{Tổng} & \textbf{30 giờ} & \textbf{Đã cài đặt; SpO$_2$ cần hiệu chuẩn}\\
 \bottomrule
@@ -222,15 +211,18 @@ Ratio-of-ratios và làm mượt SpO$_2$ & 6 giờ & Giá trị cùng cờ hợp
 Không đặt ngón tay & IR khoảng 330--400; BPM/SpO$_2$ ở WAIT & \OK\\
 Đặt ngón tay ổn định & IR khoảng 132.000--137.000 & Nhận diện biên độ rõ\\
 Sau thời gian hội tụ & BPM khoảng 72--83 qua các lần thử & \OK\\
+Thời gian xuất kết quả tổng hợp & BPM đầu tiên không quá 1,9 giây; SpO$_2$ được xét từ 1,2 giây sau khi BPM hợp lệ & \OK\\
+Dạng sóng đảo cực tính & Bộ dò tự khóa cạnh dương hoặc âm và vẫn tính đúng BPM & \OK\\
 Ước lượng SpO$_2$ thử nghiệm & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\
+Dashboard khi cờ chưa hợp lệ & Hiện ``--''; vẫn cho biết trạng thái ngón tay và chất lượng & \OK\\
 \bottomrule
 \end{tabularx}
 
 \section{Kết quả đạt được}
 
 \begin{evidencebox}[Các giá trị đầu ra]
-Phần chương trình MAX30102 gồm các hàm khởi tạo, đọc FIFO, xử lý từng mẫu, phát hiện ngón tay, tính BPM, tính ratio-of-ratios và đánh giá chất lượng tín hiệu. Các giá trị dùng chung gồm \Code{fingerPresent}, \Code{bpm}, \Code{spo2}, \Code{signalQuality}, \Code{heartRateValid} và \Code{spo2Valid}.
+Phần chương trình MAX30102 gồm các hàm khởi tạo, đọc FIFO, xử lý từng mẫu, phát hiện ngón tay, tính BPM, tính ratio-of-ratios và đánh giá chất lượng tín hiệu. Các giá trị cùng cờ hợp lệ được xuất nhất quán cho OLED, Serial và API web; dashboard không hiển thị số khi phiên đo chưa đủ điều kiện.
 \end{evidencebox}
 
 \clearpage

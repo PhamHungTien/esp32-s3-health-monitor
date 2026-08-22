@@ -8,7 +8,10 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <HardwareSerial.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
 #include <math.h>
+#include "web_dashboard.h"
 
 // Cấu hình phần cứng và chu kỳ tác vụ
 constexpr uint8_t I2C_SDA = 8;
@@ -34,6 +37,22 @@ HardwareSerial gpsSerial(1);
 // Loa trở kháng thấp cần tầng transistor khuếch đại riêng.
 constexpr uint8_t BUZZER_PIN = 42;
 bool buzzerOK = false;
+
+// Cổng theo dõi cục bộ: ESP32-S3 tự phát Wi-Fi, không cần router/Internet.
+constexpr char WIFI_AP_SSID[] = "health-monitor";
+constexpr char WIFI_AP_PASSWORD[] = "99999999";
+IPAddress wifiLocalIP(192, 168, 4, 1);
+IPAddress wifiGateway(192, 168, 4, 1);
+IPAddress wifiSubnet(255, 255, 255, 0);
+// Chỉ dùng lớp truyền tải của ESP32 Arduino Core. Bộ phân tích HTTP và gói DNS
+// ở bên dưới được nhóm tự viết, không dùng WebServer hoặc DNSServer có sẵn.
+WiFiServer httpSocket(80);
+WiFiUDP dnsSocket;
+WiFiClient activeHttpClient;
+char httpRequestLine[160] = {0};
+uint16_t httpRequestLength = 0;
+uint32_t httpClientStartMs = 0;
+bool wifiPortalOK = false;
 
 // Framebuffer OLED 128 x 64, mỗi bit tương ứng một điểm ảnh.
 uint8_t oledBuffer[1024];
@@ -82,6 +101,7 @@ struct PPGFilterState {
   uint32_t fingerReleaseStartMs;
   bool beatArmed;
   bool replaceBpmOnNextInterval;
+  int8_t pulsePolarity;
 };
 
 PPGFilterState ppgFilter = {};
@@ -491,7 +511,7 @@ void PPG_ResetMetrics() {
 
 void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeMs) {
   PPGFilterState &state = ppgFilter;
-  constexpr uint32_t PPG_SETTLE_MS = 400;
+  constexpr uint32_t PPG_SETTLE_MS = 250;
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;
@@ -547,8 +567,8 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     state.envelope = 0.0f;
     state.redSquareSum = state.irSquareSum = 0.0;
     state.windowSamples = 0;
-    // Cho phép lấy đáy đầu tiên ngay sau giai đoạn khởi tạo làm mốc RR.
-    state.beatArmed = true;
+    // Chờ tín hiệu đi qua vùng giữa để tránh tính nửa chu kỳ lúc vừa hết khởi tạo.
+    state.beatArmed = false;
     return;
   }
 
@@ -558,16 +578,35 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   state.irSquareSum += (double)irAC * irAC;
   state.windowSamples++;
 
-  // Đáy cục bộ của tín hiệu IR đánh dấu một nhịp.
+  // Tự nhận cực tính vì dạng sóng có thể đảo theo vị trí và áp lực ngón tay.
   float slope = state.filtered - state.previousFiltered;
+  // Ngưỡng thích nghi thấp giúp nhận mạch yếu nhưng vẫn cao hơn nhiễu nền.
   float peakThreshold = state.envelope * 0.55f;
-  if (peakThreshold < 35.0f) peakThreshold = 35.0f;
+  if (peakThreshold < 22.0f) peakThreshold = 22.0f;
 
-  // Pha dương phải xuất hiện trước pha âm để mỗi chu kỳ chỉ tạo một nhịp.
-  if (state.filtered > peakThreshold * 0.45f) state.beatArmed = true;
-  if (state.beatArmed && state.previousSlope < 0.0f && slope >= 0.0f &&
-      state.previousFiltered < -peakThreshold &&
+  bool crossedPositive = state.previousFiltered <= peakThreshold &&
+                         state.filtered > peakThreshold;
+  bool crossedNegative = state.previousFiltered >= -peakThreshold &&
+                         state.filtered < -peakThreshold;
+  if (state.pulsePolarity == 0 && fabsf(state.filtered) < peakThreshold * 0.25f) {
+    state.beatArmed = true;
+  } else if (state.pulsePolarity > 0 &&
+             state.filtered < -peakThreshold * 0.45f) {
+    state.beatArmed = true;
+  } else if (state.pulsePolarity < 0 &&
+             state.filtered > peakThreshold * 0.45f) {
+    state.beatArmed = true;
+  }
+
+  bool crossedSelectedEdge = state.pulsePolarity == 0 ?
+                               (crossedPositive || crossedNegative) :
+                               (state.pulsePolarity > 0 ? crossedPositive :
+                                                        crossedNegative);
+  if (state.beatArmed && crossedSelectedEdge &&
       (ppg.lastBeatMs == 0 || now - ppg.lastBeatMs > 280)) {
+    if (state.pulsePolarity == 0) {
+      state.pulsePolarity = crossedPositive ? 1 : -1;
+    }
     state.beatArmed = false;
     if (ppg.lastBeatMs == 0) {
       ppg.lastBeatMs = now;
@@ -599,22 +638,23 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     state.replaceBpmOnNextInterval = true;
   }
 
-  // Tính ratio-of-ratios trên cửa sổ hai giây.
-  if (state.windowSamples >= 200) {
+  // Cửa sổ một giây cho kết quả SpO2 đầu tiên sớm hơn mà vẫn đủ 100 mẫu.
+  if (state.windowSamples >= 100) {
     float redRms = sqrtf((float)(state.redSquareSum / state.windowSamples));
     float irRms = sqrtf((float)(state.irSquareSum / state.windowSamples));
     float perfusion = (state.dcIr > 1.0f) ?
                         (100.0f * irRms / state.dcIr) : 0.0f;
-    ppg.signalQuality = constrain(perfusion * 25.0f, 0.0f, 99.0f);
+    ppg.signalQuality = constrain(perfusion * 35.0f, 0.0f, 99.0f);
 
     if (state.dcRed > 1.0f && state.dcIr > 1.0f &&
-        redRms > 20.0f && irRms > 20.0f) {
+        redRms > 12.0f && irRms > 12.0f) {
       float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
       if (ratio > 0.2f && ratio < 2.0f) {
         float estimatedSpO2 = constrain(110.0f - 25.0f * ratio, 70.0f, 100.0f);
         // Chỉ cập nhật bằng cửa sổ đủ chất lượng; cửa sổ lỗi không xóa kết quả cũ.
-        bool estimateValid = perfusion > 0.15f && state.fingerStartMs != 0 &&
-                             now - state.fingerStartMs > 4000;
+        bool estimateValid = ppg.heartRateValid && perfusion > 0.08f &&
+                             state.fingerStartMs != 0 &&
+                             now - state.fingerStartMs >= 1200;
         if (estimateValid) {
           ppg.spo2 = ppg.spo2Valid ?
                        (0.8f * ppg.spo2 + 0.2f * estimatedSpO2) : estimatedSpO2;
@@ -790,6 +830,207 @@ const char *GPS_StatusText() {
   return "NOFIX";
 }
 
+void HTTP_SendHeader(WiFiClient &client, const char *status,
+                     const char *contentType, size_t contentLength) {
+  // Tự tạo từng trường của phản hồi HTTP/1.1 để không phụ thuộc WebServer.
+  client.print("HTTP/1.1 ");
+  client.println(status);
+  client.print("Content-Type: ");
+  client.println(contentType);
+  client.print("Content-Length: ");
+  client.println(contentLength);
+  client.println("Cache-Control: no-store, max-age=0");
+  client.println("Connection: close");
+  client.println();
+}
+
+void HTTP_SendDashboard(WiFiClient &client) {
+  size_t htmlLength = strlen_P(WEB_DASHBOARD_HTML);
+  HTTP_SendHeader(client, "200 OK", "text/html; charset=utf-8", htmlLength);
+  // Flash của ESP32-S3 được ánh xạ bộ nhớ nên có thể truyền thẳng trang nhúng.
+  client.write((const uint8_t *)WEB_DASHBOARD_HTML, htmlLength);
+}
+
+void HTTP_SendStatus(WiFiClient &client) {
+  char json[1400];
+  snprintf(
+    json, sizeof(json),
+    "{\"uptime\":%lu,\"clients\":%u,"
+    "\"oledOK\":%s,\"imuOK\":%s,\"maxOK\":%s,\"buzzerOK\":%s,"
+    "\"fingerPresent\":%s,\"heartRateValid\":%s,\"spo2Valid\":%s,"
+    "\"bpm\":%.2f,\"spo2\":%.2f,\"signalQuality\":%.2f,"
+    "\"redRaw\":%lu,\"irRaw\":%lu,\"steps\":%lu,"
+    "\"fall\":\"%s\",\"acceleration\":%.3f,\"motion\":%.3f,"
+    "\"gpsState\":\"%s\",\"satellites\":%u,\"positionKnown\":%s,"
+    "\"latitude\":%.7f,\"longitude\":%.7f,\"gpsBytes\":%lu}",
+    (unsigned long)(millis() / 1000UL), WiFi.softAPgetStationNum(),
+    oledOK ? "true" : "false", imuOK ? "true" : "false",
+    maxOK ? "true" : "false", buzzerOK ? "true" : "false",
+    ppg.fingerPresent ? "true" : "false",
+    ppg.heartRateValid ? "true" : "false",
+    ppg.spo2Valid ? "true" : "false",
+    ppg.bpm, ppg.spo2, ppg.signalQuality,
+    (unsigned long)ppg.redRaw, (unsigned long)ppg.irRaw,
+    (unsigned long)stepCount, Fall_StateText(), accelerationG, motionLevel,
+    GPS_StatusText(), gpsSatellites,
+    gpsPositionKnown ? "true" : "false", gpsLatitude, gpsLongitude,
+    (unsigned long)gpsByteCount
+  );
+  size_t jsonLength = strlen(json);
+  HTTP_SendHeader(client, "200 OK", "application/json; charset=utf-8",
+                  jsonLength);
+  client.write((const uint8_t *)json, jsonLength);
+}
+
+void HTTP_SendOK(WiFiClient &client) {
+  static const char response[] = "{\"ok\":true}";
+  HTTP_SendHeader(client, "200 OK", "application/json; charset=utf-8",
+                  sizeof(response) - 1);
+  client.write((const uint8_t *)response, sizeof(response) - 1);
+}
+
+void Web_ResetSteps(WiFiClient &client) {
+  stepCount = 0;
+  HTTP_SendOK(client);
+}
+
+void Web_ResetAlert(WiFiClient &client) {
+  fallState = FALL_NORMAL;
+  fallStateMs = millis();
+  Buzzer_Update();
+  HTTP_SendOK(client);
+}
+
+void HTTP_RouteRequest(WiFiClient &client, char *requestLine) {
+  char method[8] = {0};
+  char path[96] = {0};
+  if (sscanf(requestLine, "%7s %95s", method, path) != 2) {
+    HTTP_SendDashboard(client);
+    return;
+  }
+
+  // Bỏ chuỗi truy vấn để bộ định tuyến chỉ so sánh phần đường dẫn.
+  char *query = strchr(path, '?');
+  if (query != nullptr) *query = '\0';
+
+  if (strcmp(method, "GET") == 0 && strcmp(path, "/api/status") == 0) {
+    HTTP_SendStatus(client);
+  } else if (strcmp(method, "POST") == 0 &&
+             strcmp(path, "/api/reset-steps") == 0) {
+    Web_ResetSteps(client);
+  } else if (strcmp(method, "POST") == 0 &&
+             strcmp(path, "/api/reset-alert") == 0) {
+    Web_ResetAlert(client);
+  } else {
+    // Các địa chỉ thăm dò captive portal và đường dẫn lạ đều nhận dashboard.
+    HTTP_SendDashboard(client);
+  }
+}
+
+void HTTP_Poll() {
+  // Mỗi lần lặp chỉ đọc các byte đã có sẵn, không chờ người dùng gửi tiếp.
+  if (!activeHttpClient || !activeHttpClient.connected()) {
+    if (activeHttpClient) activeHttpClient.stop();
+    activeHttpClient = httpSocket.available();
+    httpRequestLength = 0;
+    httpClientStartMs = millis();
+  }
+  if (!activeHttpClient) return;
+
+  while (activeHttpClient.available() > 0) {
+    char c = (char)activeHttpClient.read();
+    if (c == '\n') {
+      httpRequestLine[httpRequestLength] = '\0';
+      HTTP_RouteRequest(activeHttpClient, httpRequestLine);
+      activeHttpClient.stop();
+      httpRequestLength = 0;
+      return;
+    }
+    if (c != '\r' && httpRequestLength < sizeof(httpRequestLine) - 1) {
+      httpRequestLine[httpRequestLength++] = c;
+    }
+  }
+
+  // Ngắt kết nối gửi dở để một máy khách không chiếm cổng HTTP quá lâu.
+  if (millis() - httpClientStartMs > 300) {
+    activeHttpClient.stop();
+    httpRequestLength = 0;
+  }
+}
+
+void DNS_Poll() {
+  uint8_t packet[256];
+  int packetSize = dnsSocket.parsePacket();
+  if (packetSize <= 0) return;
+  int length = dnsSocket.read(packet, sizeof(packet));
+  if (length < 17 || (packet[2] & 0x80) != 0 || packet[5] == 0) return;
+
+  // Tìm cuối tên miền dạng nhãn trong câu hỏi DNS đầu tiên.
+  uint16_t cursor = 12;
+  while (cursor < (uint16_t)length && packet[cursor] != 0) {
+    uint8_t labelLength = packet[cursor];
+    if (labelLength > 63 || cursor + labelLength + 1 >= (uint16_t)length) return;
+    cursor += labelLength + 1;
+  }
+  if (cursor + 5 > (uint16_t)length) return;
+  uint16_t questionEnd = cursor + 5;
+  uint16_t queryType = ((uint16_t)packet[cursor + 1] << 8) | packet[cursor + 2];
+  bool answerIPv4 = queryType == 1;
+
+  // Giữ nguyên mã giao dịch và câu hỏi, sau đó tự ghép bản ghi A trỏ về ESP32.
+  uint8_t response[300];
+  memcpy(response, packet, questionEnd);
+  response[2] = 0x81;
+  response[3] = 0x80;
+  response[4] = 0;
+  response[5] = 1;
+  response[6] = 0;
+  response[7] = answerIPv4 ? 1 : 0;
+  response[8] = response[9] = response[10] = response[11] = 0;
+  uint16_t responseLength = questionEnd;
+
+  if (answerIPv4) {
+    response[responseLength++] = 0xC0;
+    response[responseLength++] = 0x0C;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x01;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x01;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x3C;
+    response[responseLength++] = 0x00;
+    response[responseLength++] = 0x04;
+    for (uint8_t i = 0; i < 4; i++) response[responseLength++] = wifiLocalIP[i];
+  }
+
+  dnsSocket.beginPacket(dnsSocket.remoteIP(), dnsSocket.remotePort());
+  dnsSocket.write(response, responseLength);
+  dnsSocket.endPacket();
+}
+
+void WiFiPortal_Init() {
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleep(false);
+  bool configured = WiFi.softAPConfig(wifiLocalIP, wifiGateway, wifiSubnet);
+  bool started = WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+  wifiPortalOK = configured && started;
+  if (!wifiPortalOK) {
+    Serial.println("[WIFI] Khong the khoi tao Access Point");
+    return;
+  }
+
+  // Nhóm tự xử lý DNS wildcard và định tuyến HTTP trên socket TCP/UDP thô.
+  bool dnsStarted = dnsSocket.begin(53) == 1;
+  httpSocket.begin();
+  httpSocket.setNoDelay(true);
+  wifiPortalOK = wifiPortalOK && dnsStarted;
+  Serial.printf("[WIFI] SSID=%s PASS=%s URL=http://%s\n",
+                WIFI_AP_SSID, WIFI_AP_PASSWORD,
+                WiFi.softAPIP().toString().c_str());
+}
+
 void OLED_RenderStatus() {
   if (!oledOK) return;
 
@@ -891,6 +1132,8 @@ void setup() {
   delay(1000);
   Serial.println("\n=== HE THONG THEO DOI SUC KHOE ESP32-S3 ===");
 
+  WiFiPortal_Init();
+
   // Bus I2C dùng chung cho OLED, MAX30102 và IMU.
   Wire.begin(I2C_SDA, I2C_SCL);
   // 100 kHz phù hợp với dây nối thử nghiệm.
@@ -913,9 +1156,10 @@ void setup() {
   Buzzer_Init();
 
   Serial.printf("[STATUS] OLED=%s IMU=%s MAX30102=%s BUZZER=%s "
-                "GPS=UART1@9600\n",
+                "GPS=UART1@9600 WIFI=%s\n",
                 oledOK ? "OK" : "LOI", imuOK ? "OK" : "LOI",
-                maxOK ? "OK" : "LOI", buzzerOK ? "OK" : "LOI");
+                maxOK ? "OK" : "LOI", buzzerOK ? "OK" : "LOI",
+                wifiPortalOK ? "AP@192.168.4.1" : "LOI");
   OLED_RenderStatus();
 }
 
@@ -926,6 +1170,10 @@ void loop() {
   static uint32_t lastPrintMs = 0;
   static uint32_t lastProbeMs = 0;
 
+  if (wifiPortalOK) {
+    DNS_Poll();
+    HTTP_Poll();
+  }
   GPS_Poll();
   Buzzer_Update();
 

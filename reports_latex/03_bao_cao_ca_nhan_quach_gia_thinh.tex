@@ -6,12 +6,12 @@
 \MakeReportCover{BÁO CÁO CÔNG VIỆC CÁ NHÂN}{Quách Gia Thịnh}{24207105}{Phát hiện té ngã, đếm bước, định vị GPS và luồng cảnh báo}
 
 \begin{summarybox}[Nội dung phụ trách]
-Trong đồ án, em phụ trách đọc dữ liệu IMU, đếm bước, phát hiện té ngã, nhận dữ liệu GPS qua UART và tách thông tin vị trí từ các câu NMEA.
+Trong đồ án, em phụ trách IMU, đếm bước, phát hiện té ngã, GPS/NMEA và hợp đồng dữ liệu web cho chuyển động, cảnh báo, vị trí cùng hai thao tác điều khiển liên quan.
 \end{summarybox}
 
 \section{Mục tiêu công việc}
 
-Chức năng té ngã cần phân biệt va chạm thông thường với chuỗi rơi--va đập--bất động. Phần GPS phải nhận liên tục dữ liệu NMEA, kiểm tra checksum và phân biệt được trạng thái chưa có tín hiệu, chưa có vị trí và đã bắt được tọa độ.
+Chức năng té ngã cần phân biệt va chạm thông thường với chuỗi rơi--va đập--bất động. Phần GPS phải nhận liên tục dữ liệu NMEA, kiểm tra checksum, phân biệt các trạng thái vận hành và công bố dữ liệu nhất quán cho OLED, Serial và dashboard web.
 
 \section{Mô-đun IMU, đếm bước và té ngã}
 
@@ -227,18 +227,31 @@ bool NMEA_ChecksumOK(const char *sentence) {
   \item \textbf{FIX:} có tọa độ hợp lệ gần thời điểm hiện tại.
 \end{itemize}
 
+\subsection{Dữ liệu IMU/GPS và thao tác trên dashboard}
+
+Nhóm trường do em phụ trách được chia rõ theo chức năng:
+\begin{itemize}
+  \item chuyển động: \Code{steps}, \Code{fall}, \Code{acceleration}, \Code{motion};
+  \item trạng thái GPS: \Code{gpsState}, \Code{satellites}, \Code{gpsBytes};
+  \item vị trí: \Code{positionKnown}, \Code{latitude}, \Code{longitude}.
+\end{itemize}
+Giao diện chỉ tạo liên kết bản đồ khi đã có vị trí; trạng thái FIX hiện tại vẫn được tách khỏi tọa độ hợp lệ gần nhất.
+
+Hai yêu cầu POST được kiểm tra theo đúng biến trạng thái của thuật toán. Đường dẫn \path{/api/reset-steps} đưa bộ đếm bước về 0; \path{/api/reset-alert} đưa máy trạng thái về NORMAL và tắt buzzer ở lần cập nhật kế tiếp. Các thao tác này chỉ hoạt động trong mạng cục bộ do ESP32-S3 phát.
+
 \section{Nhật ký khối lượng}
 
 \begin{tabularx}{\textwidth}{L{7.5cm} C{2.2cm} Y}
 \toprule
 \textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
 \midrule
-Khởi tạo, đọc và chuẩn hóa IMU & 5 giờ & $a_x,a_y,a_z,A$ theo đơn vị $g$\\
+Khởi tạo, đọc và chuẩn hóa IMU & 4 giờ & $a_x,a_y,a_z,A$ theo đơn vị $g$\\
 Lọc chuyển động và đếm bước & 4 giờ & Mức chuyển động, số bước\\
-Máy trạng thái té ngã & 7 giờ & FREEFALL--IMPACT--ALERT\\
+Máy trạng thái té ngã & 6 giờ & FREEFALL--IMPACT--ALERT\\
 Cấu hình UART và kiểm tra luồng GPS & 4 giờ & Dòng NMEA 9600 baud\\
-Checksum, bộ đệm và parser GGA/RMC & 6 giờ & Vị trí, vệ tinh, trạng thái fix\\
+Checksum, bộ đệm và parser GGA/RMC & 5 giờ & Vị trí, vệ tinh, trạng thái fix\\
 Tích hợp vị trí vào cảnh báo, kiểm thử & 4 giờ & Dữ liệu cảnh báo hoàn chỉnh\\
+Hợp đồng dữ liệu và điều khiển web & 3 giờ & Trường JSON, đặt lại bước/hủy cảnh báo\\
 \midrule
 \textbf{Tổng} & \textbf{30 giờ} & \textbf{Đã cài đặt; cần thử đối chứng}\\
 \bottomrule
@@ -260,6 +273,8 @@ GPS ngoài trời/gần cửa sổ & FIX, 4 vệ tinh ở lần chạy cuối, c
 GPS khi tín hiệu kém & NOFIX, không tạo tọa độ mới & \OK\\
 Máy trạng thái với dữ liệu tổng hợp & Chuỗi rơi--va đập--bất động vào ALERT; chuỗi thiếu va đập quay về NORMAL & \OK\\
 Chuỗi té ngã & Đã cài máy trạng thái; chưa thử ngã người thật vì yêu cầu an toàn & \NeedTest\\
+Dashboard IMU/GPS & Bước, gia tốc, trạng thái té ngã, GPS và tọa độ cập nhật đúng trường & \OK\\
+Điều khiển web cục bộ & Đặt lại bước và hủy ALERT trả phản hồi JSON thành công & \OK\\
 \bottomrule
 \end{tabularx}
 
@@ -268,7 +283,7 @@ Phép thử trên máy tính dùng lại đúng hệ số và ngưỡng của fi
 \section{Kết quả đạt được}
 
 \begin{evidencebox}[Các giá trị đầu ra]
-Phần chương trình cung cấp độ lớn gia tốc, số bước, trạng thái té ngã, bộ đếm byte GPS, số vệ tinh, vĩ độ, kinh độ và trạng thái WAIT/LOST/NOFIX/FIX. Nhật ký phần cứng lần chạy cuối ghi nhận GPS FIX với 4 vệ tinh và tọa độ khoảng 10,757$^\circ$ Bắc, 106,676$^\circ$ Đông.
+Phần chương trình cung cấp độ lớn gia tốc, số bước, trạng thái té ngã, bộ đếm byte GPS, số vệ tinh, vĩ độ, kinh độ và trạng thái WAIT/LOST/NOFIX/FIX cho cả OLED, Serial và API web. Nhật ký phần cứng lần chạy cuối ghi nhận GPS FIX với 4 vệ tinh và tọa độ khoảng 10,757$^\circ$ Bắc, 106,676$^\circ$ Đông.
 \end{evidencebox}
 
 \section{Nhận xét và hướng hoàn thiện}

@@ -22,16 +22,16 @@ Không thành viên nào được giao riêng việc tìm hoặc tổng hợp t�
 \midrule
 \endhead
 1 & \textbf{Phạm Hùng Tiến}\newline 24207043 &
-Thiết kế sơ đồ tích hợp; ánh xạ chân ESP32-S3; viết các hàm giao tiếp I2C mức thấp; viết driver SSD1306, framebuffer và font 5x7; xây dựng màn hình trạng thái; xử lý tự phát hiện lại thiết bị; cấu hình N16R8; khắc phục lỗi nạp qua USB-UART và tổ chức kiểm thử tích hợp. &
-OLED hiển thị đủ dữ liệu; quét đúng địa chỉ I2C; firmware biên dịch/nạp ổn định qua USB native; các mô-đun dùng chung lịch chạy không làm tràn FIFO PPG. & \textbf{33,4\%}\\
+Thiết kế sơ đồ tích hợp; ánh xạ chân ESP32-S3; viết giao tiếp I2C và driver SSD1306; tổ chức lịch chạy; cấu hình Wi-Fi Access Point; tự viết phản hồi DNS captive portal, bộ phân tích/định tuyến HTTP và API JSON; xây dựng khung dashboard responsive; cấu hình N16R8, quy trình nạp và kiểm thử tích hợp. &
+OLED và dashboard hiển thị đủ dữ liệu; mạng \Code{health-monitor} hoạt động tại 192.168.4.1; API cập nhật không chặn FIFO PPG; firmware giữ cơ chế tự phát hiện lại thiết bị. & \textbf{33,4\%}\\
 \midrule
 2 & \textbf{Hồ Sĩ Phú}\newline 24207101 &
-Cấu hình thanh ghi MAX30102; quản lý FIFO 100 mẫu/giây; đồng bộ thời gian mẫu; phát hiện ngón tay; tách DC/AC bằng IIR; dò đáy nhịp và khoảng trơ; làm mượt BPM; tính SpO$_2$ theo ratio-of-ratios; đánh giá chất lượng tín hiệu và thiết kế quy trình hiệu chuẩn. &
-Không xuất số khi chưa đặt tay; IR thay đổi rõ khi đặt tay; BPM hội tụ; SpO$_2$ chỉ hợp lệ sau thời gian ổn định; có cờ chất lượng và kế hoạch đối chứng. & \textbf{33,3\%}\\
+Cấu hình MAX30102 và FIFO 100 mẫu/giây; phát hiện ngón tay; tách DC/AC; dò nhịp; làm mượt BPM; ước lượng SpO$_2$; đánh giá chất lượng; xác định hợp đồng dữ liệu web cho BPM, SpO$_2$, chất lượng, RED/IR và trạng thái ngón tay; kiểm tra tính nhất quán OLED--web. &
+Không xuất số khi chưa đặt tay; BPM hội tụ; SpO$_2$ chỉ hợp lệ sau thời gian ổn định; dashboard thể hiện đúng cờ hợp lệ, chất lượng và dữ liệu PPG thô. & \textbf{33,3\%}\\
 \midrule
 3 & \textbf{Quách Gia Thịnh}\newline 24207105 &
-Khởi tạo và đọc IMU; đổi dữ liệu gia tốc sang đơn vị $g$; lọc chuyển động; đếm bước; xây dựng máy trạng thái rơi tự do--va đập--bất động; thu NMEA; kiểm tra checksum; phân tích GGA/RMC; xuất tọa độ và số vệ tinh. &
-Gia tốc nghỉ ổn định quanh $1g$; bộ đếm không tự tăng khi thiết bị đặt yên; GPS nhận byte liên tục; phân biệt WAIT/NOFIX/FIX; chỉ nhận tọa độ từ câu NMEA đúng checksum. & \textbf{33,3\%}\\
+Khởi tạo và đọc IMU; lọc chuyển động; đếm bước; xây dựng máy trạng thái té ngã; thu và giải mã NMEA; xác định hợp đồng dữ liệu web cho gia tốc, bước, cảnh báo, GPS và tọa độ; kiểm tra thao tác đặt lại bước/hủy cảnh báo trên dashboard. &
+Gia tốc nghỉ ổn định quanh $1g$; bộ đếm không tự tăng khi đặt yên; GPS phân biệt WAIT/NOFIX/FIX; dashboard hiển thị vị trí và phản hồi đúng hai thao tác điều khiển. & \textbf{33,3\%}\\
 \bottomrule
 \end{longtable}
 \normalsize
@@ -42,9 +42,9 @@ Gia tốc nghỉ ổn định quanh $1g$; bộ đếm không tự tăng khi thi�
 \toprule
 \textbf{Thành viên} & \textbf{Khối lượng} & \textbf{Kết quả chính} & \textbf{Kết quả khi ghép hệ thống}\\
 \midrule
-Phạm Hùng Tiến & 30 giờ & OLED, I2C, USB và giao diện hệ thống & Build 11\% flash, 7\% RAM; nạp và chạy liên tục\\
-Hồ Sĩ Phú & 30 giờ & FIFO, BPM, SpO$_2$, chất lượng PPG & IR khoảng 330--400 khi rời tay và trên 130.000 khi đặt tay; BPM quan sát 72--83\\
-Quách Gia Thịnh & 30 giờ & IMU, đếm bước, té ngã và GPS & Gia tốc nghỉ 1,08$g$; bộ đếm giữ 0 khi đặt yên; GPS nhận hơn 7.000 byte NMEA\\
+Phạm Hùng Tiến & 30 giờ & Tích hợp, OLED, Wi-Fi AP, HTTP/DNS tự viết và dashboard & Hệ thống chạy đồng thời; web cục bộ truy cập tại 192.168.4.1\\
+Hồ Sĩ Phú & 30 giờ & FIFO, BPM, SpO$_2$, chất lượng PPG và dữ liệu web & IR thay đổi rõ theo ngón tay; BPM 72--83; API giữ đúng cờ hợp lệ\\
+Quách Gia Thịnh & 30 giờ & IMU, té ngã, GPS, trường dữ liệu và điều khiển web & Gia tốc nghỉ 1,08$g$; GPS nhận hơn 7.000 byte; thao tác web phản hồi đúng\\
 \bottomrule
 \end{tabularx}
 
