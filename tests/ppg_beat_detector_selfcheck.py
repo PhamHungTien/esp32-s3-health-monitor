@@ -17,7 +17,7 @@ class BeatDetector:
         self.previous_filtered = 0.0
         self.previous_slope = 0.0
         self.envelope = 0.0
-        # Sau 120 ms khởi tạo, theo dõi cả hai cực tính đến khi có RR hợp lệ.
+        # Sau 350 ms bám nền, theo dõi cả hai cực tính đến khi có RR hợp lệ.
         self.beat_armed = False
         self.last_beat_ms = 0
         self.pulse_polarity = 0
@@ -118,7 +118,7 @@ def feed_sine(detector: BeatDetector, bpm: float, amplitude: float,
               duration_ms: int, noise: float = 0.0) -> None:
     generator = random.Random(20260804)
     period_ms = 60000.0 / bpm
-    for now_ms in range(120, duration_ms, 10):
+    for now_ms in range(350, duration_ms, 10):
         signal = amplitude * math.sin(2.0 * math.pi * now_ms / period_ms)
         signal += generator.uniform(-noise, noise)
         detector.process(signal, now_ms)
@@ -135,10 +135,10 @@ def first_spo2_result_ms() -> int | None:
         phase = 2.0 * math.pi * now_ms / 800.0
         red_value = 130_000.0 + 900.0 * math.sin(phase)
         ir_value = 134_000.0 + 1_400.0 * math.sin(phase)
-        alpha = 0.20 if now_ms < 120 else 0.01
+        alpha = 0.20 if now_ms < 350 else 0.01
         dc_red += alpha * (red_value - dc_red)
         dc_ir += alpha * (ir_value - dc_ir)
-        if now_ms < 120:
+        if now_ms < 350:
             continue
         red_ac = red_value - dc_red
         ir_ac = ir_value - dc_ir
@@ -150,9 +150,20 @@ def first_spo2_result_ms() -> int | None:
             ir_rms = math.sqrt(ir_square_sum / window_samples)
             perfusion = 100.0 * ir_rms / dc_ir
             ratio = (red_rms / dc_red) / (ir_rms / dc_ir)
-            if perfusion > 0.08 and 0.2 < ratio < 2.0 and now_ms >= 700:
+            if perfusion > 0.08 and 0.2 < ratio < 2.0 and now_ms >= 930:
                 return now_ms
     return None
+
+
+def placement_transient_residual(settle_ms: int) -> float:
+    """Mô phỏng IR tăng nhanh khi ngón tay vừa che cảm biến."""
+    dc_ir = 10_000.0
+    ir_value = dc_ir
+    for now_ms in range(0, settle_ms, 10):
+        ramp = min(1.0, now_ms / 150.0)
+        ir_value = 10_000.0 + 160_000.0 * ramp
+        dc_ir += 0.20 * (ir_value - dc_ir)
+    return abs(ir_value - dc_ir)
 
 
 def main() -> None:
@@ -177,12 +188,17 @@ def main() -> None:
 
     noise_only = BeatDetector()
     generator = random.Random(42)
-    for now_ms in range(120, 6000, 10):
+    for now_ms in range(350, 6000, 10):
         noise_only.process(generator.uniform(-20.0, 20.0), now_ms)
     assert noise_only.bpm is None
 
     spo2_result_ms = first_spo2_result_ms()
-    assert spo2_result_ms is not None and spo2_result_ms <= 760
+    assert spo2_result_ms is not None and spo2_result_ms <= 1000
+
+    # 120 ms còn để lại xung DC lớn; 350 ms đưa sai lệch xuống dưới mức có thể
+    # làm phồng đường bao và che mất cạnh nhịp đầu tiên.
+    assert placement_transient_residual(120) > 20_000.0
+    assert placement_transient_residual(350) < 1_000.0
 
     print("PPG_NORMAL_SIGNAL_BPM=PASS")
     print("PPG_PROVISIONAL_RESULT_WITHIN_1S=PASS")
@@ -190,7 +206,8 @@ def main() -> None:
     print("PPG_LOW_PERFUSION_SIGNAL_BPM=PASS")
     print("PPG_AUTO_POLARITY_SIGNAL_BPM=PASS")
     print("PPG_NOISE_REJECTION=PASS")
-    print("PPG_SPO2_FIRST_RESULT_WITHIN_760MS=PASS")
+    print("PPG_SPO2_FIRST_RESULT_WITHIN_1S=PASS")
+    print("PPG_FINGER_PLACEMENT_TRANSIENT_REJECTED=PASS")
 
 
 if __name__ == "__main__":

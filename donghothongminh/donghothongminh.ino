@@ -516,7 +516,10 @@ void PPG_ResetMetrics() {
 
 void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeMs) {
   PPGFilterState &state = ppgFilter;
-  constexpr uint32_t PPG_SETTLE_MS = 120;
+  // Khi vừa chạm, IR có thể tăng từ ngưỡng nhận tay lên hơn 100.000 chỉ trong
+  // vài chục mẫu. Bám nền nhanh đủ 350 ms để xung đặt tay không làm phồng
+  // đường bao và che mất các nhịp thật ngay sau đó.
+  constexpr uint32_t PPG_SETTLE_MS = 350;
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;

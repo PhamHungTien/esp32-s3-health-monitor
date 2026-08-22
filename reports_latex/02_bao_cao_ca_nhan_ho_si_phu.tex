@@ -86,7 +86,7 @@ if (!ppg.fingerPresent) {
 
 \subsection{Thuật toán nhịp tim}
 
-Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,12 giây đầu, bộ lọc bám nhanh theo mức DC để giảm xung lớn khi vừa đặt tay. Sau đó, bộ dò ghi đồng thời mốc cạnh dương và cạnh âm; chỉ khi một phía hoàn thành khoảng RR hợp lệ thì cực tính đó mới được khóa cho phần còn lại của phiên đo. Cách làm này tránh khóa nhầm do nhiễu đầu phiên và vẫn hoạt động khi dạng sóng bị đảo hoặc không cân xứng; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
+Với cảm biến đặt ở đầu ngón, tín hiệu IR sau lọc dao động quanh đường nền. Trong 0,35 giây đầu, bộ lọc bám nhanh theo mức DC để loại xung lớn khi vừa đặt tay; phép thử thực tế cho thấy xung này từng làm đường bao tăng tới 99\% và che mất cạnh nhịp. Sau đó, bộ dò ghi đồng thời mốc cạnh dương và cạnh âm; chỉ khi một phía hoàn thành khoảng RR hợp lệ thì cực tính đó mới được khóa cho phần còn lại của phiên đo. Cách làm này tránh khóa nhầm do nhiễu đầu phiên và vẫn hoạt động khi dạng sóng bị đảo hoặc không cân xứng; khoảng trơ ngăn một nhịp bị đếm hai lần. Khoảng giữa hai nhịp hợp lệ $\Delta t$ được đổi sang BPM:
 
 \[
   \mathrm{BPM}=\frac{60\,000}{\Delta t_{\mathrm{ms}}}.
@@ -96,7 +96,7 @@ Chỉ các giá trị trong miền 40--180 BPM được đưa vào bộ làm mư
 
 \subsection{\texorpdfstring{Ước lượng SpO$_2$}{Ước lượng SpO2}}
 
-Trong mỗi cửa sổ 64 mẫu, em tính thành phần DC và độ mạnh AC của hai kênh. Sau 0,12 giây bám nền, cửa sổ đầu tiên hoàn tất ở khoảng 0,76 giây kể từ khi nhận ngón tay. SpO$_2$ được xét độc lập với cờ BPM vì tỷ số quang có điều kiện hợp lệ riêng; kết quả chỉ được công nhận khi biên độ AC, mức tưới máu và tỷ số RED/IR đều đạt ngưỡng. Tỷ số chuẩn hóa được xác định bởi:
+Trong mỗi cửa sổ 64 mẫu, em tính thành phần DC và độ mạnh AC của hai kênh. Sau 0,35 giây bám nền, cửa sổ đầu tiên hoàn tất ở khoảng một giây kể từ khi nhận ngón tay. SpO$_2$ được xét độc lập với cờ BPM vì tỷ số quang có điều kiện hợp lệ riêng; kết quả chỉ được công nhận khi biên độ AC, mức tưới máu và tỷ số RED/IR đều đạt ngưỡng. Tỷ số chuẩn hóa được xác định bởi:
 
 \[
  R=\frac{AC_{RED}/DC_{RED}}{AC_{IR}/DC_{IR}},

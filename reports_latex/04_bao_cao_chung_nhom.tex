@@ -216,7 +216,7 @@ Hai endpoint POST cho phép đặt lại số bước và hủy cảnh báo. Das
 
 \subsection{\texorpdfstring{Nhịp tim và SpO$_2$}{Nhịp tim và SpO2}}
 
-MAX30102 cung cấp hai kênh quang RED/IR ở 100 Hz. Sau 0,12 giây bám nền, hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ; cạnh cùng cực tính kế tiếp xác nhận RR đầy đủ và thay số sơ bộ. Nếu không có RR xác nhận trong 1,8 giây, số sơ bộ tự bị hủy. SpO$_2$ dùng tỷ lệ giữa AC/DC trong cửa sổ 64 mẫu, được xét độc lập với BPM và có thể xuất từ khoảng 0,76 giây nếu tín hiệu quang đạt điều kiện.
+MAX30102 cung cấp hai kênh quang RED/IR ở 100 Hz. Trong 0,35 giây đầu, bộ lọc bám nhanh theo mức DC để xung đặt tay không làm ngưỡng nhịp tăng sai. Sau đó, hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ; cạnh cùng cực tính kế tiếp xác nhận RR đầy đủ và thay số sơ bộ. Nếu không có RR xác nhận trong 1,8 giây, số sơ bộ tự bị hủy. SpO$_2$ dùng tỷ lệ giữa AC/DC trong cửa sổ 64 mẫu, được xét độc lập với BPM và có thể xuất sau khoảng một giây nếu tín hiệu quang đạt điều kiện.
 
 \subsection{Phát hiện té ngã}
 
