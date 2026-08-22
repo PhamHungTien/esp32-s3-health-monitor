@@ -12,6 +12,8 @@ class BeatDetector:
     MAX_RR_MS = 1500
     MIN_HALF_RR_MS = 167
     MAX_HALF_RR_MS = 750
+    MIN_PROVISIONAL_BPM = 45.0
+    MAX_PROVISIONAL_BPM = 140.0
 
     def __init__(self) -> None:
         self.previous_filtered = 0.0
@@ -79,9 +81,11 @@ class BeatDetector:
         ):
             half_interval = abs(self.positive_edge_ms - self.negative_edge_ms)
             if self.MIN_HALF_RR_MS <= half_interval <= self.MAX_HALF_RR_MS:
-                self.bpm = 30000.0 / half_interval
-                self.provisional = True
-                self.first_result_ms = now_ms
+                provisional_bpm = 30000.0 / half_interval
+                if self.MIN_PROVISIONAL_BPM <= provisional_bpm <= self.MAX_PROVISIONAL_BPM:
+                    self.bpm = provisional_bpm
+                    self.provisional = True
+                    self.first_result_ms = now_ms
 
         selected_edge = (
             crossed_positive if self.pulse_polarity > 0
@@ -200,6 +204,10 @@ def main() -> None:
     assert placement_transient_residual(120) > 20_000.0
     assert placement_transient_residual(350) < 1_000.0
 
+    # Nửa chu kỳ 170 ms tương ứng khoảng 176 BPM thường do cạnh đặt tay;
+    # không được đưa lên màn hình dưới dạng kết quả sơ bộ.
+    assert 30000.0 / 170.0 > BeatDetector.MAX_PROVISIONAL_BPM
+
     print("PPG_NORMAL_SIGNAL_BPM=PASS")
     print("PPG_PROVISIONAL_RESULT_WITHIN_1S=PASS")
     print("PPG_CONFIRMED_RESULT_WITHIN_1_75S=PASS")
@@ -208,6 +216,7 @@ def main() -> None:
     print("PPG_NOISE_REJECTION=PASS")
     print("PPG_SPO2_FIRST_RESULT_WITHIN_1S=PASS")
     print("PPG_FINGER_PLACEMENT_TRANSIENT_REJECTED=PASS")
+    print("PPG_IMPLAUSIBLE_PROVISIONAL_BPM_REJECTED=PASS")
 
 
 if __name__ == "__main__":

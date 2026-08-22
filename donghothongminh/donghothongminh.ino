@@ -525,6 +525,8 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   constexpr uint32_t MAX_RR_MS = 1500;
   constexpr uint32_t MIN_HALF_RR_MS = 167;
   constexpr uint32_t MAX_HALF_RR_MS = 750;
+  constexpr float MIN_PROVISIONAL_BPM = 45.0f;
+  constexpr float MAX_PROVISIONAL_BPM = 140.0f;
 
   ppg.redRaw = redValue;
   ppg.irRaw = irValue;
@@ -652,10 +654,17 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
                                 state.positiveEdgeMs - state.negativeEdgeMs :
                                 state.negativeEdgeMs - state.positiveEdgeMs;
       if (halfInterval >= MIN_HALF_RR_MS && halfInterval <= MAX_HALF_RR_MS) {
-        ppg.bpm = 30000.0f / halfInterval;
-        ppg.heartRateValid = true;
-        ppg.heartRateProvisional = true;
-        state.provisionalBpmMs = now;
+        float provisionalBPM = 30000.0f / halfInterval;
+        // Cạnh giả lúc ngón tay vừa dịch chuyển thường tạo số sơ bộ rất cao.
+        // Chỉ công bố vùng sinh lý thực tế của nguyên mẫu; RR đầy đủ sau đó
+        // vẫn giữ miền 40--180 BPM để không bỏ sót nhịp đã xác nhận.
+        if (provisionalBPM >= MIN_PROVISIONAL_BPM &&
+            provisionalBPM <= MAX_PROVISIONAL_BPM) {
+          ppg.bpm = provisionalBPM;
+          ppg.heartRateValid = true;
+          ppg.heartRateProvisional = true;
+          state.provisionalBpmMs = now;
+        }
       }
     }
   }
@@ -678,8 +687,10 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
           ppg.heartRateValid = true;
           ppg.heartRateProvisional = false;
           state.replaceBpmOnNextInterval = false;
-        } else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
-          ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
+        } else if (fabsf(instantBPM - ppg.bpm) <= 18.0f) {
+          // Làm mượt mạnh hơn để OLED không đổi nhiều đơn vị chỉ vì một
+          // khoảng RR ngắn hoặc dài hơn do ngón tay rung nhẹ.
+          ppg.bpm = 0.90f * ppg.bpm + 0.10f * instantBPM;
         }
         ppg.lastBeatMs = now;
       } else if (interval > MAX_RR_MS) {
