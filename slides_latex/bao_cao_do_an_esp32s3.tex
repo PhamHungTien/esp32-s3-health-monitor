@@ -161,22 +161,49 @@
   \vspace{2mm}\par\muted{Một nguồn dữ liệu dùng chung cho OLED, Serial và dashboard web.}
 \end{frame}
 
-\begin{frame}{Phần cứng dùng I2C chung và UART riêng cho GPS}
-  \small
+\begin{frame}{Thông số cơ bản được chọn theo đúng cấu hình firmware}
+  \scriptsize
   \begin{tabularx}{\textwidth}{>{\bfseries}l l l X}
     \toprule
-    Khối & Giao tiếp & Tài nguyên & Vai trò\\
+    Mô-đun & Giao tiếp & Cấu hình đang dùng & Chức năng\\
     \midrule
-    OLED SSD1306 & I2C 0x3C & GPIO8/9 & Hiển thị tại chỗ\\
-    MAX30102 & I2C 0x57 & GPIO8/9 & RED/IR, FIFO 100 Hz\\
-    IMU & I2C 0x68 & GPIO8/9 & Gia tốc, bước, té ngã\\
-    GPS & UART1 & RX21/TX47 & NMEA 9600 baud\\
-    Buzzer & LEDC PWM & GPIO42 & Âm cảnh báo\\
-    Web & Wi-Fi AP & 192.168.4.1 & Dashboard và API JSON\\
+    ESP32-S3 N16R8 & 240 MHz & Flash 16 MB, PSRAM 8 MB & Điều phối và Wi-Fi AP\\
+    OLED SSD1306 & I2C 0x3C & 128$\times$64, cập nhật 10 Hz & Hiển thị tại chỗ\\
+    MAX30102 & I2C 0x57 & ADC 18 bit; 400 Hz/4 $\Rightarrow$ 100 Hz & RED/IR, BPM, SpO$_2$\\
+    IMU 6 trục & I2C 0x68 & $\pm2g$, DLPF 44 Hz, đọc 50 Hz & Bước và té ngã\\
+    GPS NEO-6M/7M & UART1 & 9.600 baud, GGA/RMC & Vị trí và vệ tinh\\
+    Buzzer & LEDC PWM & GPIO42; 1,7/2,3 kHz & Cảnh báo xen kẽ\\
     \bottomrule
   \end{tabularx}
-  \vspace{5mm}
-  \fcolorbox{Ink}{LightGray}{\parbox{0.94\textwidth}{\centering\bfseries Camera phải tách khỏi GPIO8--9 để tránh tranh chấp với bus I2C.}}
+  \vspace{3mm}
+  \fcolorbox{Ink}{LightGray}{\parbox{0.94\textwidth}{\centering\bfseries GPIO8--9 là bus I2C chung; GPS tách sang RX21/TX47 và buzzer dùng GPIO42.}}
+\end{frame}
+
+\begin{frame}{Các driver và thuật toán chính đều do nhóm tự viết}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      {\large\bfseries Lớp giao tiếp phần cứng}\par\vspace{2mm}
+      \small
+      \begin{itemize}\setlength\itemsep{1.8mm}
+        \item Đọc/ghi thanh ghi I2C và FIFO MAX30102
+        \item Framebuffer, font 5$\times$7 và lệnh SSD1306
+        \item Đọc 6 byte gia tốc, PWM buzzer
+        \item Gom UART, checksum và parser NMEA
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      {\large\bfseries Lớp xử lý và dịch vụ}\par\vspace{2mm}
+      \small
+      \begin{itemize}\setlength\itemsep{1.8mm}
+        \item IIR, ngưỡng thích nghi, RR và ratio-of-ratios
+        \item Bộ đếm bước và máy trạng thái té ngã
+        \item DNS wildcard, parser HTTP, router và JSON
+        \item Máy trạng thái phục hồi từng cảm biến
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{3mm}
+  \fcolorbox{Ink}{Ink}{\parbox{0.93\textwidth}{\centering\color{white}\small\bfseries Chỉ dùng Arduino Core, Wire, HardwareSerial, WiFi và WiFiUDP làm lớp nền truy cập phần cứng; không dùng thư viện cảm biến hay thuật toán hoàn chỉnh.}}
 \end{frame}
 
 \begin{frame}{Vòng lặp không chặn giữ dữ liệu và web hoạt động đồng thời}
@@ -200,7 +227,7 @@
   \vspace{2mm}\par\muted{Ba nhịp thời gian cùng chạy mà không dùng trì hoãn dài.}
 \end{frame}
 
-\begin{frame}{PPG chuyển RED/IR thành BPM có kiểm soát chất lượng}
+\begin{frame}{PPG tự lọc RED/IR rồi xác nhận BPM theo khoảng RR}
   \centering
   \begin{tikzpicture}[node distance=3mm, b/.style={draw=Ink,rounded corners=1mm,minimum width=23mm,minimum height=9mm,align=center,font=\scriptsize}, a/.style={-{Latex[length=2mm]},thick}]
     \node[b] (a) {FIFO\\100 Hz}; \node[b,right=of a] (b) {Nhận/ngắt\\ngón tay};
@@ -208,13 +235,29 @@
     \node[b,right=of d,fill=Ink,text=white] (e) {BPM / SpO$_2$\\Cờ hợp lệ};
     \draw[a](a)--(b);\draw[a](b)--(c);\draw[a](c)--(d);\draw[a](d)--(e);
   \end{tikzpicture}
-  \vspace{8mm}
-  \bigmetric{$<1$ s}{BPM sơ bộ}\hfill
-  \bigmetric{90--96\%}{SpO$_2$ nguyên mẫu}\hfill
-  \bigmetric{100 Hz}{Tốc độ lấy mẫu}\hfill
-  \bigmetric{0,76 s}{SpO$_2$ sớm nhất}
-  \vspace{5mm}\par
-  \fcolorbox{Ink}{white}{\parbox{0.91\textwidth}{\centering\bfseries SpO$_2$ chưa hiệu chuẩn bằng thiết bị y tế tham chiếu.}}
+  \vspace{2mm}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      \scriptsize
+      \begin{itemize}\setlength\itemsep{0.5mm}
+        \item ADC 400 Hz, trung bình 4 mẫu $\Rightarrow$ FIFO 100 Hz
+        \item Xung LED 411 $\mu$s, dòng khoảng 10 mA, dải 4.096 nA
+        \item Bám nền 350 ms; ngưỡng $0{,}55\times$ đường bao
+        \item BPM $=60.000/\Delta t_{RR}$, miền xác nhận 40--180 BPM
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \scriptsize
+      \begin{itemize}\setlength\itemsep{0.5mm}
+        \item BPM sơ bộ từ nửa chu kỳ, sau đó thay bằng RR đầy đủ
+        \item SpO$_2$: RMS(AC)/DC của RED và IR trong 64 mẫu
+        \item Phiên đo mới tự làm sạch MAX30102 và FIFO
+        \item Kẹt quá 3,5 s: tự khởi tạo lại, không cần Serial Monitor
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{0.5mm}\par
+  \fcolorbox{Ink}{white}{\parbox{0.91\textwidth}{\centering\small\bfseries SpO$_2$ là giá trị ước lượng nguyên mẫu, chưa hiệu chuẩn bằng thiết bị y tế.}}
 \end{frame}
 
 \begin{frame}{IMU phục vụ đếm bước và máy trạng thái té ngã}
@@ -223,20 +266,20 @@
       {\large\bfseries Đếm bước}\par\vspace{2mm}
       \small
       \begin{itemize}\setlength\itemsep{1.5mm}
-        \item Tách trọng lực và gia tốc động
-        \item Xác nhận đáy âm rồi đỉnh $>0{,}11g$
-        \item Chu kỳ hợp lệ 280--1.800 ms
-        \item Hai đỉnh liên tiếp mới bắt đầu cộng
+        \item IIR tách trọng lực: $\alpha=0{,}03$; lọc động $\alpha=0{,}25$
+        \item Xác nhận đáy $<-0{,}05g$ rồi đỉnh $>0{,}11g$
+        \item Chu kỳ hợp lệ 280--1.800 ms; tổng gia tốc $<1{,}8g$
+        \item Hai đỉnh liên tiếp mới xác nhận chuỗi đi bộ
       \end{itemize}
     \end{column}
     \begin{column}{0.50\textwidth}
       {\large\bfseries Phát hiện té ngã}\par\vspace{1mm}
       \centering
       \flowstate{NORMAL}{Theo dõi}\par$\downarrow$\par
-      \flowstate{FREEFALL}{$<0{,}45g$}\par$\downarrow$\par
-      \flowstate{IMPACT}{Va đập mạnh}\par$\downarrow$\par
-      \flowstate{ALERT}{Ít chuyển động}
-      \vspace{1mm}\par\tiny\muted{Thiếu điều kiện: quay về NORMAL.}
+      \flowstate{FREEFALL}{$<0{,}45g$ trong 120 ms}\par$\downarrow$\par
+      \flowstate{IMPACT}{$>2{,}2g$; trực tiếp nếu $>2{,}8g$}\par$\downarrow$\par
+      \flowstate{ALERT}{Sau 1,8 s: ít chuyển động, 0,72--1,28g}
+      \vspace{1mm}\par\tiny\muted{Không đủ điều kiện trong 5 s: quay về NORMAL.}
     \end{column}
   \end{columns}
 \end{frame}
@@ -244,14 +287,16 @@
 \begin{frame}[fragile]{GPS chỉ nhận câu NMEA vượt qua checksum}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.43\textwidth}
-      \vspace{3mm}
-      {\Large\bfseries WAIT $\rightarrow$ NOFIX $\rightarrow$ FIX}\par
-      \vspace{5mm}
-      \begin{itemize}\setlength\itemsep{3mm}
-        \item GGA/RMC cung cấp vị trí và số vệ tinh
+      \vspace{1mm}
+      {\large\bfseries WAIT $\rightarrow$ NOFIX $\rightarrow$ FIX}\par
+      \vspace{2mm}
+      \small
+      \begin{itemize}\setlength\itemsep{1.2mm}
+        \item UART có byte nhưng chưa đủ vệ tinh: NOFIX, không phải mất GPS
+        \item GGA: chất lượng fix, vệ tinh, tọa độ; RMC: trạng thái A/V
         \item LOST khi UART ngừng quá 3 giây
         \item Tọa độ hợp lệ gần nhất được giữ riêng
-        \item Dashboard chỉ mở bản đồ khi đã có vị trí
+        \item Dashboard chỉ mở bản đồ khi parser đã xác nhận vị trí
       \end{itemize}
     \end{column}
     \begin{column}{0.53\textwidth}
@@ -264,7 +309,7 @@ for (const char *p = sentence + 1;
 }
 return checksum == expected;
 \end{lstlisting}
-      \vspace{3mm}\par\centering\bfseries Câu sai checksum bị loại trước khi parser tách trường.
+      \vspace{1mm}\par\centering\small\bfseries Câu sai checksum bị loại trước khi parser tách trường.
     \end{column}
   \end{columns}
 \end{frame}
