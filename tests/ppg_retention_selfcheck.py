@@ -3,7 +3,8 @@
 
 
 class PPGDisplayState:
-    RELEASE_CONFIRM_MS = 1200
+    GAP_NEW_SESSION_MS = 180
+    RELEASE_CONFIRM_MS = 450
 
     def __init__(self) -> None:
         self.finger_present = True
@@ -17,7 +18,17 @@ class PPGDisplayState:
     def process_ir(self, ir_value: int, now_ms: int) -> None:
         has_finger = ir_value > (7000 if self.finger_present else 10000)
         if has_finger:
+            if (
+                self.finger_present
+                and self.release_start_ms is not None
+                and now_ms - self.release_start_ms >= self.GAP_NEW_SESSION_MS
+            ):
+                self.heart_rate_valid = False
+                self.spo2_valid = False
+                self.bpm = 0.0
+                self.spo2 = 0.0
             self.release_start_ms = None
+            self.finger_present = True
             return
 
         if not self.finger_present:
@@ -57,22 +68,30 @@ def main() -> None:
     assert state.spo2_valid and state.spo2 == 97.0
 
     state.process_ir(5000, 1000)
-    state.process_ir(5000, 1900)
+    state.process_ir(120000, 1120)
     assert state.finger_present
     assert state.heart_rate_valid and state.spo2_valid
-
-    state.process_ir(120000, 1950)
-    assert state.release_start_ms is None
 
     state.accept_bpm(92.0)
     assert state.bpm == 92.0
 
+    # Rút rồi đặt lại nhanh phải tạo phiên mới, không dùng bộ dò BPM cũ.
+    state.process_ir(5000, 2000)
+    state.process_ir(120000, 2250)
+    assert state.finger_present
+    assert not state.heart_rate_valid and not state.spo2_valid
+
+    state.heart_rate_valid = True
+    state.spo2_valid = True
+    state.bpm = 80.0
+    state.spo2 = 98.0
     state.process_ir(5000, 3000)
-    state.process_ir(5000, 4200)
+    state.process_ir(5000, 3450)
     assert not state.finger_present
     assert not state.heart_rate_valid and not state.spo2_valid
 
     print("PPG_TRANSIENT_GAP_RETAINS_VALUES=PASS")
+    print("PPG_QUICK_REINSERT_STARTS_NEW_SESSION=PASS")
     print("PPG_PULSE_TIMEOUT_RETAINS_BPM=PASS")
     print("PPG_BAD_SPO2_WINDOW_RETAINS_VALUE=PASS")
     print("PPG_CONFIRMED_FINGER_RELEASE_CLEARS_VALUES=PASS")

@@ -520,7 +520,10 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   // vài chục mẫu. Bám nền nhanh đủ 350 ms để xung đặt tay không làm phồng
   // đường bao và che mất các nhịp thật ngay sau đó.
   constexpr uint32_t PPG_SETTLE_MS = 350;
-  constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 1200;
+  // Hụt dưới 180 ms thường chỉ do ngón tay rung. Nếu tín hiệu mất lâu hơn rồi
+  // quay lại, coi đó là một lần đặt tay mới để không dùng trạng thái nhịp cũ.
+  constexpr uint32_t FINGER_GAP_NEW_SESSION_MS = 180;
+  constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 450;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;
   constexpr uint32_t MIN_HALF_RR_MS = 167;
@@ -550,6 +553,15 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
       ppgFilter.dcIr = irValue;
     }
     return;
+  }
+  if (ppg.fingerPresent && state.fingerReleaseStartMs != 0 &&
+      sampleTimeMs - state.fingerReleaseStartMs >= FINGER_GAP_NEW_SESSION_MS) {
+    // Ngón tay đã rời đủ lâu rồi xuất hiện lại trước thời hạn xác nhận nhả.
+    // Bắt đầu phiên mới và xóa cực tính/cạnh/RR cũ; nếu không, SpO2 có thể
+    // tính lại nhưng BPM sẽ chờ trên một trạng thái không còn phù hợp.
+    PPG_ResetMetrics();
+    ppg.redRaw = redValue;
+    ppg.irRaw = irValue;
   }
   state.fingerReleaseStartMs = 0;
 
