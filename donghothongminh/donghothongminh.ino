@@ -489,14 +489,15 @@ bool MAX30102_Init() {
   if (!I2C_WriteRegister(MAX30102_ADDR, 0x05, 0x00)) return false;
   if (!I2C_WriteRegister(MAX30102_ADDR, 0x06, 0x00)) return false;
 
-  // Không lấy trung bình trong chip; cho phép FIFO quay vòng.
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x08, 0x1F)) return false;
-  // ADC 4096 nA, 100 mẫu/giây, độ rộng xung 411 us.
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0A, 0x27)) return false;
-  // Dòng LED đỏ và hồng ngoại khoảng 7 mA.
-  // Khoảng 8,6 mA mỗi LED: tăng SNR nhưng vẫn giữ mức DC trong vùng 1/4--3/4 ADC.
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0C, 0x2C)) return false;
-  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0D, 0x2C)) return false;
+  // Trung bình bốn mẫu ngay trong MAX30102 để giảm nhiễu quang/điện. ADC chạy
+  // 400 Hz nên sau khi decimate, FIFO vẫn trả đúng 100 mẫu/giây cho thuật toán.
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x08, 0x5F)) return false;
+  // ADC 4096 nA, 400 mẫu/giây, độ rộng xung 411 us.
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0A, 0x2F)) return false;
+  // 0x32 tương ứng khoảng 10 mA, là điểm khởi đầu hãng khuyến nghị. Mức DC đo
+  // thực tế khoảng 62% toàn thang, vẫn nằm trong vùng mục tiêu 1/4--3/4 ADC.
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0C, 0x32)) return false;
+  if (!I2C_WriteRegister(MAX30102_ADDR, 0x0D, 0x32)) return false;
   // Chế độ SpO2 trả về lần lượt mẫu RED và IR.
   if (!I2C_WriteRegister(MAX30102_ADDR, 0x09, 0x03)) return false;
   return true;
@@ -524,6 +525,7 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   // quay lại, coi đó là một lần đặt tay mới để không dùng trạng thái nhịp cũ.
   constexpr uint32_t FINGER_GAP_NEW_SESSION_MS = 180;
   constexpr uint32_t FINGER_RELEASE_CONFIRM_MS = 450;
+  constexpr uint32_t BEAT_ACQUIRE_RETRY_MS = 3500;
   constexpr uint32_t MIN_RR_MS = 333;
   constexpr uint32_t MAX_RR_MS = 1500;
   constexpr uint32_t MIN_HALF_RR_MS = 167;
@@ -734,6 +736,28 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
     // Giữ BPM gần nhất trên màn hình và bắt đầu lại việc tìm một cặp nhịp mới.
     ppg.lastBeatMs = 0;
     state.replaceBpmOnNextInterval = true;
+  }
+
+  if (!ppg.heartRateValid && fingerAgeMs >= BEAT_ACQUIRE_RETRY_MS) {
+    // Nếu không tìm được BPM, tự làm mới riêng bộ dò thay vì phụ thuộc việc
+    // mở Serial Monitor (thao tác đó chỉ vô tình reset toàn bộ bo qua USB).
+    // Giữ trạng thái có tay nhưng xóa nền/cạnh/cực tính đã khóa sai.
+    state.dcRed = redValue;
+    state.dcIr = irValue;
+    state.filtered = 0.0f;
+    state.previousFiltered = 0.0f;
+    state.previousSlope = 0.0f;
+    state.envelope = 0.0f;
+    state.beatArmed = false;
+    state.replaceBpmOnNextInterval = false;
+    state.pulsePolarity = 0;
+    state.positiveEdgeMs = 0;
+    state.negativeEdgeMs = 0;
+    state.provisionalBpmMs = 0;
+    state.redSquareSum = 0.0;
+    state.irSquareSum = 0.0;
+    state.windowSamples = 0;
+    state.fingerStartMs = now;
   }
 
   // Cửa sổ 64 mẫu tạo kết quả đầu tiên sau khoảng 0,76 giây kể từ lúc chạm.

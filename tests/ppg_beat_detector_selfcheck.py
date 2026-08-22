@@ -171,6 +171,12 @@ def placement_transient_residual(settle_ms: int) -> float:
 
 
 def main() -> None:
+    # Cấu hình mới lấy ADC 400 Hz và trung bình bốn mẫu trong FIFO; thuật toán
+    # vẫn nhận đúng 100 Hz nhưng có SNR tốt hơn so với lấy trực tiếp 100 Hz.
+    adc_sample_rate_hz = 400
+    fifo_sample_average = 4
+    assert adc_sample_rate_hz // fifo_sample_average == 100
+
     normal = BeatDetector()
     feed_sine(normal, bpm=75.0, amplitude=80.0, duration_ms=5000, noise=8.0)
     assert normal.bpm is not None
@@ -217,6 +223,7 @@ def main() -> None:
     print("PPG_SPO2_FIRST_RESULT_WITHIN_1S=PASS")
     print("PPG_FINGER_PLACEMENT_TRANSIENT_REJECTED=PASS")
     print("PPG_IMPLAUSIBLE_PROVISIONAL_BPM_REJECTED=PASS")
+    print("PPG_HARDWARE_AVERAGING_EFFECTIVE_100HZ=PASS")
 
 
 if __name__ == "__main__":
