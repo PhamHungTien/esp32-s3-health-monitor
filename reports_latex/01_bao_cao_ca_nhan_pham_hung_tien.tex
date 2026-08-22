@@ -255,23 +255,6 @@ if (millis() - lastDisplayMs >= DISPLAY_PERIOD_MS) {
 
 Em cấu hình \Code{USBMode=hwcdc}, \Code{CDCOnBoot=cdc}, flash 16 MB và OPI PSRAM cho đúng phiên bản bo. Sau mỗi lần reset, cổng USB mới được kiểm tra lại trước khi nạp. Phiên bản có Wi-Fi cùng HTTP/DNS tự viết sử dụng 969.218 byte flash (30\%) và 49.972 byte RAM toàn cục (15\%).
 
-\section{Nhật ký khối lượng}
-
-\begin{tabularx}{\textwidth}{L{7.5cm} C{2.2cm} Y}
-\toprule
-\textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
-\midrule
-Sơ đồ tích hợp, chân và cấu hình bo & 3 giờ & Bảng chân, cấu hình N16R8\\
-Hàm I2C và quét thiết bị & 4 giờ & Đọc/ghi thanh ghi, phát hiện 0x3C/0x57/0x68\\
-Driver SSD1306 và giao diện OLED & 6 giờ & Framebuffer, màn hình sức khỏe/cảnh báo\\
-Wi-Fi AP, captive portal, API và dashboard & 7 giờ & Web responsive, JSON và hai thao tác POST\\
-Lịch chạy, phục hồi và tích hợp & 5 giờ & Vòng lặp không chặn\\
-Biên dịch, nạp và kiểm thử tổng & 5 giờ & Firmware và hai giao diện hoạt động\\
-\midrule
-\textbf{Tổng} & \textbf{30 giờ} & \textbf{Hoàn thành}\\
-\bottomrule
-\end{tabularx}
-
 \section{Kết quả kiểm tra}
 
 \begin{evidencebox}[Kết quả ghi nhận]
@@ -302,6 +285,6 @@ Trang web làm tăng tải xử lý & Nhúng tài nguyên trong flash, không d�
 
 \section{Kết quả và hạn chế}
 
-Phần tích hợp kết hợp OLED và cổng web cục bộ; ba thiết bị I2C, GPS, buzzer cùng dịch vụ HTTP/DNS tự viết được tổ chức trong cùng vòng lặp. Hệ thống hiện mới được thử nghiệm bằng nguồn USB; cần đo tải Wi-Fi, thời gian hoạt động bằng pin, bổ sung xác thực thao tác và hoàn thiện vỏ đeo.
+Phần tích hợp kết hợp OLED và cổng web cục bộ; ba thiết bị I2C, GPS, buzzer cùng dịch vụ HTTP/DNS tự viết được tổ chức trong cùng vòng lặp. Hệ thống hiện thử bằng nguồn USB; cần đo tải Wi-Fi và thời lượng pin, bổ sung xác thực thao tác, hoàn thiện vỏ đeo.
 
 \end{document}

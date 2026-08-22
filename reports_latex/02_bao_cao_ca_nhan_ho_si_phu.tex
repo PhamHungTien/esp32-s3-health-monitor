@@ -254,24 +254,6 @@ API công bố trạng thái ngón tay, BPM, SpO$_2$, chất lượng và RED/IR
 
 Việc tách trạng thái hợp lệ khỏi giá trị số giúp OLED, Serial và web dùng cùng một nguồn sự thật. Nhờ đó, dashboard không tự suy diễn trạng thái từ số 0 và không hiển thị nhầm kết quả cũ sau khi đổi người đo.
 
-\section{Nhật ký khối lượng}
-
-\begin{tabularx}{\textwidth}{L{7.6cm} C{2.1cm} Y}
-\toprule
-\textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
-\midrule
-Cấu hình thanh ghi và FIFO 100 Hz & 5 giờ & Luồng RED/IR liên tục\\
-Phát hiện ngón tay và reset trạng thái & 4 giờ & Không xuất số khi rời tay\\
-Lọc DC/AC và ngưỡng thích nghi & 4 giờ & Tín hiệu xung ổn định\\
-Phát hiện nhịp, khoảng trơ, BPM & 6 giờ & BPM quan sát 72--83\\
-Ratio-of-ratios và làm mượt SpO$_2$ & 5 giờ & Giá trị cùng cờ hợp lệ\\
-Đánh giá chất lượng, thử nghiệm & 3 giờ & $Q$, bảng kết quả và giới hạn\\
-Hợp đồng dữ liệu và kiểm tra dashboard & 3 giờ & Trường JSON và quy tắc hiển thị PPG\\
-\midrule
-\textbf{Tổng} & \textbf{30 giờ} & \textbf{Đã cài đặt; SpO$_2$ cần hiệu chuẩn}\\
-\bottomrule
-\end{tabularx}
-
 \section{Kết quả kiểm thử}
 
 \begin{tabularx}{\textwidth}{L{4.4cm} L{4.2cm} Y}
@@ -295,7 +277,6 @@ Dashboard khi cờ chưa hợp lệ & Hiện ``--''; vẫn cho biết trạng th
 Phần chương trình MAX30102 gồm các hàm khởi tạo, đọc FIFO, xử lý từng mẫu, phát hiện ngón tay, tính BPM, tính ratio-of-ratios và đánh giá chất lượng tín hiệu. Các giá trị cùng cờ hợp lệ được xuất nhất quán cho OLED, Serial và API web; dashboard không hiển thị số khi phiên đo chưa đủ điều kiện.
 \end{evidencebox}
 
-\clearpage
 \section{Nhận xét và hướng hoàn thiện}
 
 Thuật toán đã phát hiện được ngón tay và cho BPM ổn định trong điều kiện người đo giữ yên. SpO$_2$ hiện mới là giá trị ước lượng. Cần thu thêm dữ liệu đối chứng để hiệu chỉnh hệ số và đánh giá ảnh hưởng của lực ép, chuyển động và ánh sáng ngoài.

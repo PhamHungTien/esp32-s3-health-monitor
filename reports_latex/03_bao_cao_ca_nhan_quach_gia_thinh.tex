@@ -263,24 +263,6 @@ Giao diện chỉ tạo liên kết bản đồ khi đã có vị trí; trạng 
 
 Hai yêu cầu POST được kiểm tra theo đúng biến trạng thái của thuật toán. Đường dẫn \path{/api/reset-steps} đưa bộ đếm bước về 0; \path{/api/reset-alert} đưa máy trạng thái về NORMAL và tắt buzzer ở lần cập nhật kế tiếp. Các thao tác này chỉ hoạt động trong mạng cục bộ do ESP32-S3 phát.
 
-\section{Nhật ký khối lượng}
-
-\begin{tabularx}{\textwidth}{L{7.5cm} C{2.2cm} Y}
-\toprule
-\textbf{Hạng mục} & \textbf{Thời lượng} & \textbf{Đầu ra}\\
-\midrule
-Khởi tạo, đọc và chuẩn hóa IMU & 4 giờ & $a_x,a_y,a_z,A$ theo đơn vị $g$\\
-Lọc chuyển động và đếm bước & 4 giờ & Mức chuyển động, số bước\\
-Máy trạng thái té ngã & 6 giờ & FREEFALL--IMPACT--ALERT\\
-Cấu hình UART và kiểm tra luồng GPS & 4 giờ & Dòng NMEA 9600 baud\\
-Checksum, bộ đệm và parser GGA/RMC & 5 giờ & Vị trí, vệ tinh, trạng thái fix\\
-Tích hợp vị trí vào cảnh báo, kiểm thử & 4 giờ & Dữ liệu cảnh báo hoàn chỉnh\\
-Hợp đồng dữ liệu và điều khiển web & 3 giờ & Trường JSON, đặt lại bước/hủy cảnh báo\\
-\midrule
-\textbf{Tổng} & \textbf{30 giờ} & \textbf{Đã cài đặt; cần thử đối chứng}\\
-\bottomrule
-\end{tabularx}
-
 \section{Kết quả kiểm thử}
 
 \begin{tabularx}{\textwidth}{L{4.4cm} L{5.1cm} Y}
