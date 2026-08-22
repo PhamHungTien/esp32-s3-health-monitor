@@ -21,7 +21,7 @@ Em cấu hình MAX30102 bằng các thanh ghi điều khiển: reset, con trỏ 
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.72\textwidth,height=5.0cm,keepaspectratio]{assets/components/max30102_board_overview.jpg}
+  \includegraphics[width=0.72\textwidth,height=5.0cm,keepaspectratio]{assets/grayscale/max30102_board_overview.jpg}
   \caption{Mô-đun tham chiếu dùng MAX30102 với các chân VCC, GND, SCL, SDA và INT. Bo thực tế của nhóm được xác nhận bằng địa chỉ I2C 0x57; hình dạng PCB có thể khác. Nguồn ảnh: \href{https://wiki.dfrobot.com/sen0344/docs/19237}{DFRobot}.}
   \label{fig:phu-max30102}
 \end{figure}
@@ -64,7 +64,7 @@ if (!hasFinger) {
   state.dcRed = redValue;
 (*@\VNCodeComment{Đặt mức nền kênh hồng ngoại theo cùng nguyên tắc.}@*)
   state.dcIr = irValue;
-(*@\VNCodeComment{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO$_2$ khi chưa có ngón tay.}@*)
+(*@\VNCodeComment{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO2 khi chưa có ngón tay.}@*)
   return;
 (*@\VNCodeComment{Kết thúc nhánh không có ngón tay.}@*)
 }
@@ -180,17 +180,17 @@ float irRms = sqrtf((float)(state.irSquareSum /
 float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
 (*@\VNCodeComment{Dòng trống tách phép tính tỷ số với bước kiểm tra miền hợp lệ.}@*)
 
-(*@\VNCodeComment{Chỉ ước lượng SpO$_2$ khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}@*)
+(*@\VNCodeComment{Chỉ ước lượng SpO2 khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}@*)
 if (ratio > 0.2f && ratio < 2.0f) {
-(*@\VNCodeComment{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO$_2$.}@*)
+(*@\VNCodeComment{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO2.}@*)
   float estimatedSpO2 = constrain(110.0f - 25.0f * ratio,
 (*@\VNCodeComment{Giới hạn kết quả trong khoảng 70--100\% để tránh giá trị hiển thị phi thực tế.}@*)
                                   70.0f, 100.0f);
-(*@\VNCodeComment{Kiểm tra hệ thống đã có kết quả SpO$_2$ hợp lệ từ cửa sổ trước hay chưa.}@*)
+(*@\VNCodeComment{Kiểm tra hệ thống đã có kết quả SpO2 hợp lệ từ cửa sổ trước hay chưa.}@*)
   ppg.spo2 = ppg.spo2Valid ?
 (*@\VNCodeComment{Nếu đã có thì làm mượt 80/20; nếu chưa có thì dùng ngay ước lượng đầu tiên.}@*)
              0.8f * ppg.spo2 + 0.2f * estimatedSpO2 : estimatedSpO2;
-(*@\VNCodeComment{Kết thúc nhánh cập nhật SpO$_2$.}@*)
+(*@\VNCodeComment{Kết thúc nhánh cập nhật SpO2.}@*)
 }
 \end{lstlisting}
 
@@ -233,6 +233,7 @@ Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\
 Phần chương trình MAX30102 gồm các hàm khởi tạo, đọc FIFO, xử lý từng mẫu, phát hiện ngón tay, tính BPM, tính ratio-of-ratios và đánh giá chất lượng tín hiệu. Các giá trị dùng chung gồm \Code{fingerPresent}, \Code{bpm}, \Code{spo2}, \Code{signalQuality}, \Code{heartRateValid} và \Code{spo2Valid}.
 \end{evidencebox}
 
+\clearpage
 \section{Nhận xét và hướng hoàn thiện}
 
 Thuật toán đã phát hiện được ngón tay và cho BPM ổn định trong điều kiện người đo giữ yên. SpO$_2$ hiện mới là giá trị ước lượng. Cần thu thêm dữ liệu đối chứng để hiệu chỉnh hệ số và đánh giá ảnh hưởng của lực ép, chuyển động và ánh sáng ngoài.

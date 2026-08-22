@@ -11,13 +11,18 @@
 \setlength{\parskip}{3pt}
 
 \usepackage{xcolor}
-\definecolor{Primary}{HTML}{12355B}
-\definecolor{Secondary}{HTML}{187795}
-\definecolor{Accent}{HTML}{F4A261}
-\definecolor{SoftBlue}{HTML}{EAF3F7}
-\definecolor{SoftGray}{HTML}{F4F6F8}
-\definecolor{Success}{HTML}{287D52}
-\definecolor{Warning}{HTML}{A65A00}
+% Hệ màu đơn sắc: chỉ dùng đen, trắng và các mức xám để in ấn chuyên nghiệp.
+\definecolor{Primary}{gray}{0}
+\definecolor{Secondary}{gray}{0}
+\definecolor{Accent}{gray}{0.72}
+\definecolor{SoftBlue}{gray}{0.94}
+\definecolor{SoftGray}{gray}{0.97}
+\definecolor{Success}{gray}{0}
+\definecolor{Warning}{gray}{0}
+% Màu chỉ dùng bên trong khối mã nguồn.
+\definecolor{CodeKeyword}{HTML}{1F4E79}
+\definecolor{CodeComment}{HTML}{3F6B45}
+\definecolor{CodeString}{HTML}{8A4B08}
 
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -82,33 +87,42 @@
 
 \lstdefinestyle{firmware}{
   language=C++,
-  basicstyle=\ttfamily\scriptsize,
-  keywordstyle=\color{Primary}\bfseries,
-  commentstyle=\color{Success},
-  stringstyle=\color{Warning},
+  basicstyle=\ttfamily\fontsize{8.35}{10.2}\selectfont,
+  keywordstyle=\color{CodeKeyword}\bfseries,
+  commentstyle=\color{CodeComment}\itshape,
+  stringstyle=\color{CodeString},
   numbers=left,
-  numberstyle=\tiny\color{gray},
-  numbersep=7pt,
-  frame=single,
-  rulecolor=\color{Secondary!65},
-  backgroundcolor=\color{SoftGray},
+  numberstyle=\sffamily\fontsize{6.8}{8.2}\selectfont\color{black!48},
+  numbersep=9pt,
+  frame=lines,
+  framerule=0.45pt,
+  rulecolor=\color{black!68},
+  backgroundcolor=\color{white},
+  framesep=5.5pt,
   breaklines=true,
+  breakatwhitespace=false,
+  breakindent=1.25em,
   columns=fullflexible,
   keepspaces=true,
   showstringspaces=false,
   tabsize=2,
   escapeinside={(*@}{@*)},
-  xleftmargin=0.8em,
-  framexleftmargin=0.5em,
-  aboveskip=7pt,
-  belowskip=7pt,
+  xleftmargin=1.1em,
+  xrightmargin=0.25em,
+  framexleftmargin=1.0em,
+  framexrightmargin=0.45em,
+  aboveskip=9pt,
+  belowskip=10pt,
+  abovecaptionskip=6pt,
+  belowcaptionskip=0pt,
   captionpos=b
 }
 
 % Chú thích tiếng Việt được render bằng XeLaTeX ngay trong khung mã.
 \newcommand{\VNCodeComment}[1]{%
-  \parbox[t]{0.92\linewidth}{%
-    \raggedright\color{Success}\sffamily\itshape // #1}%
+  \parbox[t]{0.93\linewidth}{%
+    \raggedright\color{CodeComment}\sffamily\fontsize{7.7}{9.1}\selectfont\itshape
+    \textcolor{CodeComment}{\textbf{//}}\enspace #1}%
 }
 
 \newcommand{\ProjectTitle}{THIẾT BỊ ĐEO THEO DÕI SỨC KHỎE, PHÁT HIỆN TÉ NGÃ VÀ ĐỊNH VỊ DÙNG ESP32-S3}

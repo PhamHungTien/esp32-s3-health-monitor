@@ -52,12 +52,13 @@ Không dùng thư viện ngoài & Driver và parser viết trong sketch & \OK\\
 
 \section{Kiến trúc hệ thống}
 
-\begin{center}
+\begin{figure}[htbp]
+\centering
 \begin{tikzpicture}[
   node distance=8mm and 12mm,
-  block/.style={draw=Primary,rounded corners,fill=SoftBlue,minimum width=31mm,minimum height=11mm,align=center,font=\small},
-  core/.style={draw=Secondary,very thick,rounded corners,fill=Secondary!15,minimum width=40mm,minimum height=16mm,align=center,font=\bfseries},
-  arrow/.style={-{Latex[length=2.2mm]},thick,color=Primary}
+  block/.style={draw=black,rounded corners=1mm,fill=gray!7,minimum width=31mm,minimum height=11mm,align=center,font=\small},
+  core/.style={draw=black,very thick,rounded corners=1mm,fill=gray!18,minimum width=40mm,minimum height=16mm,align=center,font=\bfseries},
+  arrow/.style={-{Latex[length=2.2mm]},thick,color=black}
 ]
 \node[core] (esp) {ESP32-S3 N16R8\\Bộ lập lịch không chặn};
 \node[block,above left=of esp] (ppg) {MAX30102\\RED/IR, FIFO};
@@ -73,7 +74,9 @@ Không dùng thư viện ngoài & Driver và parser viết trong sketch & \OK\\
 \draw[arrow] (esp) -- (fall);
 \draw[arrow] (esp) -- (oled);
 \end{tikzpicture}
-\end{center}
+\caption{Sơ đồ khối kiến trúc tổng thể của thiết bị.}
+\label{fig:block-architecture}
+\end{figure}
 
 \subsection{Bảng kết nối}
 
@@ -100,24 +103,24 @@ GPIO8 và GPIO9 cũng thuộc nhóm tín hiệu camera trên bo Freenove ESP32-S
   \centering
   \begin{minipage}[t]{0.48\textwidth}
     \centering
-    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio]{assets/components/esp32s3_freenove.jpg}
+    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio]{assets/grayscale/esp32s3_freenove.jpg}
     \\[2pt]\small (a) Bo điều khiển Freenove ESP32-S3 N16R8.
   \end{minipage}\hfill
   \begin{minipage}[t]{0.48\textwidth}
     \centering
-    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio,trim=110 30 110 30,clip]{assets/components/oled_ssd1306.jpg}
+    \includegraphics[width=0.88\linewidth,height=4.5cm,keepaspectratio,trim=110 30 110 30,clip]{assets/grayscale/oled_ssd1306.jpg}
     \\[2pt]\small (b) OLED SSD1306 128x64 tham chiếu.
   \end{minipage}
 
   \vspace{5mm}
   \begin{minipage}[t]{0.48\textwidth}
     \centering
-    \includegraphics[width=0.90\linewidth,height=4.0cm,keepaspectratio]{assets/components/max30102_board_overview.jpg}
+    \includegraphics[width=0.90\linewidth,height=4.0cm,keepaspectratio]{assets/grayscale/max30102_board_overview.jpg}
     \\[2pt]\small (c) Bo breakout MAX30102 tham chiếu.
   \end{minipage}\hfill
   \begin{minipage}[t]{0.48\textwidth}
     \centering
-    \includegraphics[width=0.66\linewidth,height=4.0cm,keepaspectratio,trim=180 55 180 55,clip]{assets/components/gps_neo6m_reference.jpg}
+    \includegraphics[width=0.66\linewidth,height=4.0cm,keepaspectratio,trim=180 55 180 55,clip]{assets/grayscale/gps_neo6m_reference.jpg}
     \\[2pt]\small (d) Mô-đun GPS UART tham chiếu.
   \end{minipage}
   \caption{Nhóm linh kiện chính của nguyên mẫu. Ảnh bo điều khiển là đúng dòng sản phẩm; ảnh OLED, MAX30102 và GPS thể hiện loại linh kiện/giao tiếp, không dùng để khẳng định nhà sản xuất của các bo breakout đang lắp. Nguồn: Freenove, Waveshare và DFRobot.}
@@ -158,6 +161,32 @@ Sketch không dùng Adafruit SSD1306/GFX, SparkFun MAX3010x, TinyGPS++, thư vi�
 
 Ở mỗi vòng lặp, chương trình đọc hết byte GPS đang chờ và rút FIFO PPG. Theo các mốc thời gian riêng, chương trình cập nhật IMU, máy trạng thái té ngã, OLED và nhật ký. Không có trì hoãn dài nên các nguồn dữ liệu tốc độ khác nhau vẫn hoạt động đồng thời.
 
+\Needspace{0.38\textheight}
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm and 13mm,
+  process/.style={draw=black,rounded corners=1mm,fill=gray!7,minimum width=46mm,minimum height=10mm,align=center,font=\small},
+  decision/.style={draw=black,diamond,aspect=2.4,fill=gray!14,inner sep=1.3mm,align=center,font=\small},
+  flow/.style={-{Latex[length=2.2mm]},thick,color=black},
+  label/.style={font=\scriptsize,fill=white,inner sep=1pt}
+]
+\node[process] (start) {Bắt đầu một vòng \Code{loop()}};
+\node[process,below=of start] (read) {Đọc hết byte GPS đang chờ\\Rút và xử lý FIFO PPG};
+\node[decision,below=of read] (due) {Đến mốc thời gian\\của tác vụ?};
+\node[process,below=of due] (tasks) {Cập nhật IMU, phát hiện té ngã\\OLED, buzzer và nhật ký};
+\node[process,right=of due] (recover) {Kiểm tra trạng thái\\và phát hiện lại thiết bị};
+\draw[flow] (start) -- (read);
+\draw[flow] (read) -- (due);
+\draw[flow] (due) -- node[label,left]{Có} (tasks);
+\draw[flow] (due) -- node[label,above]{Không} (recover);
+\draw[flow] (tasks.east) -| (recover.south);
+\draw[flow] (recover.north) |- (start.east);
+\end{tikzpicture}
+\caption{Sơ đồ khối luồng xử lý không chặn trong vòng lặp chính.}
+\label{fig:main-loop-flow}
+\end{figure}
+
 \subsection{Giao diện hiển thị}
 
 Màn hình chính ưu tiên BPM và SpO$_2$ bằng ký tự cỡ lớn. Các hàng dưới hiển thị hướng dẫn đo, số bước, trạng thái té ngã, GPS, số vệ tinh/gia tốc hoặc tọa độ luân phiên. Khi có té ngã, toàn màn hình chuyển sang cảnh báo khẩn; nếu GPS vừa mất fix, màn hình dùng tọa độ hợp lệ gần nhất và ký hiệu \Code{L-LAT}/\Code{L-LON}. Các số chân đấu nối không xuất hiện trên giao diện người dùng.
@@ -196,7 +225,7 @@ if (result == FIFO_NO_DATA) break;
 if (result == FIFO_BUS_ERROR) {
 (*@\VNCodeComment{Đánh dấu cảm biến quang đang mất kết nối để cơ chế phục hồi có thể khởi tạo lại.}@*)
   maxOK = false;
-(*@\VNCodeComment{Xóa BPM, SpO$_2$ và trạng thái bộ lọc để không giữ số đo của phiên cũ.}@*)
+(*@\VNCodeComment{Xóa BPM, SpO2 và trạng thái bộ lọc để không giữ số đo của phiên cũ.}@*)
   PPG_ResetMetrics();
 (*@\VNCodeComment{Đặt cả hai mẫu quang thô về 0, tránh giao diện hiểu dữ liệu cũ là mẫu mới.}@*)
   ppg.redRaw = ppg.irRaw = 0;
