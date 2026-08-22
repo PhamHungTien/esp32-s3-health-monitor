@@ -132,6 +132,18 @@ GPIO8 và GPIO9 cũng thuộc nhóm tín hiệu camera trên bo Freenove ESP32-S
   \label{fig:group-components}
 \end{figure}
 
+\Needspace{0.62\textheight}
+\subsection{Nguyên mẫu hoạt động trên mạch thử}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\textwidth,height=10.2cm,keepaspectratio]{assets/product/product_breadboard.jpg}
+  \caption{Nguyên mẫu thực tế của nhóm lắp trên breadboard gồm ESP32-S3, OLED, MAX30102, IMU, GPS và buzzer. OLED đang nhận dữ liệu từ firmware tại thời điểm chụp; các số hiển thị trong ảnh chỉ minh họa trạng thái hoạt động, không được dùng làm số liệu hiệu chuẩn y tế. Ảnh do nhóm chụp.}
+  \label{fig:working-breadboard-prototype}
+\end{figure}
+
+Hình~\ref{fig:working-breadboard-prototype} xác nhận chuỗi phần cứng đã được lắp và chạy đồng thời trên một nguyên mẫu thống nhất, thay vì chỉ kiểm tra từng mô-đun riêng lẻ. Đây là cấu hình được sử dụng để kiểm tra hiển thị OLED, tín hiệu PPG, dữ liệu chuyển động, luồng GPS và cảnh báo âm thanh.
+
 \section{Thiết kế phần mềm}
 
 \subsection{Tổ chức chương trình}
@@ -381,6 +393,8 @@ Nạp phần cứng & Xác minh hash, hard reset thành công & \OK\\
 \end{longtable}
 
 Các ca mô phỏng được tái lập bằng tệp \path{tests/algorithm_selfcheck.py}, chỉ dùng thư viện chuẩn Python và giữ nguyên hệ số/ngưỡng của firmware. Chúng chứng minh luồng quyết định chạy nhất quán nhưng không được dùng để thay thế số liệu đi bộ hoặc té ngã trên người thật.
+
+Ảnh nguyên mẫu tại Hình~\ref{fig:working-breadboard-prototype} bổ sung bằng chứng trực quan cho phép thử tích hợp: ESP32-S3, màn hình, cảm biến quang, IMU, GPS và buzzer cùng hiện diện trên breadboard; OLED hiển thị dữ liệu trong khi người dùng đặt ngón tay lên MAX30102.
 
 \section{Đánh giá rủi ro và giới hạn}
 
