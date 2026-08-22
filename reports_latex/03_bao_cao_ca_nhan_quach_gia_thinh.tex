@@ -87,7 +87,24 @@ case FALL_NORMAL:
   }
 (*@\VNCodeComment{Thoát khỏi nhánh trạng thái bình thường của câu lệnh switch.}@*)
   break;
-(*@\VNCodeComment{Dòng trống phân tách hai trạng thái của máy trạng thái.}@*)
+(*@\VNCodeComment{Bắt đầu nhánh chờ va đập sau khi đã xác nhận rơi tự do.}@*)
+case FALL_FREE_FALL:
+(*@\VNCodeComment{Xác nhận va đập nếu tổng gia tốc vượt 2,2 g trong cửa sổ rơi tự do.}@*)
+  if (accelerationG > 2.2f) {
+(*@\VNCodeComment{Chuyển sang giai đoạn kiểm tra bất động sau va đập.}@*)
+    fallState = FALL_IMPACT;
+(*@\VNCodeComment{Lưu thời điểm va đập để tính cửa sổ xác nhận tiếp theo.}@*)
+    fallStateMs = now;
+(*@\VNCodeComment{Hủy chuỗi nếu sau 1.200 ms vẫn không xuất hiện va đập đủ mạnh.}@*)
+  } else if (now - fallStateMs > 1200) {
+(*@\VNCodeComment{Trở về trạng thái bình thường vì sự kiện rơi tự do không hoàn chỉnh.}@*)
+    fallState = FALL_NORMAL;
+(*@\VNCodeComment{Xóa mốc gia tốc thấp để lần giám sát kế tiếp bắt đầu sạch.}@*)
+    lowGStartMs = 0;
+(*@\VNCodeComment{Kết thúc phép kiểm tra va đập sau rơi tự do.}@*)
+  }
+(*@\VNCodeComment{Thoát khỏi nhánh rơi tự do.}@*)
+  break;
 
 (*@\VNCodeComment{Bắt đầu nhánh xử lý sau khi đã phát hiện va đập.}@*)
 case FALL_IMPACT:
@@ -99,6 +116,8 @@ case FALL_IMPACT:
     fallState = FALL_ALERT;
 (*@\VNCodeComment{Lưu thời điểm phát cảnh báo để phục vụ hiển thị, còi và thao tác hủy.}@*)
     fallStateMs = now;
+(*@\VNCodeComment{Ghi thông báo cảnh báo ra Serial khi cổng chẩn đoán đang được mở.}@*)
+    Serial.println("[ALERT] PHAT HIEN TE NGA - CAN KIEM TRA NGUOI DUNG");
 (*@\VNCodeComment{Nếu sau 5 giây vẫn không đủ điều kiện bất động thì xem va đập là sự kiện giả.}@*)
   } else if (now - fallStateMs > 5000) {
 (*@\VNCodeComment{Đưa máy trạng thái về bình thường để tiếp tục giám sát.}@*)
@@ -106,6 +125,11 @@ case FALL_IMPACT:
 (*@\VNCodeComment{Kết thúc nhánh hết thời hạn chờ sau va đập.}@*)
   }
 (*@\VNCodeComment{Thoát khỏi nhánh trạng thái va đập.}@*)
+  break;
+
+(*@\VNCodeComment{Bắt đầu nhánh cảnh báo đã được xác nhận.}@*)
+case FALL_ALERT:
+(*@\VNCodeComment{Giữ nguyên cảnh báo cho đến khi người dùng hủy từ dashboard hoặc khởi động lại.}@*)
   break;
 \end{lstlisting}
 

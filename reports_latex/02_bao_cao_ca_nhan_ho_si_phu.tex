@@ -34,53 +34,71 @@ Em cấu hình MAX30102 bằng các thanh ghi điều khiển: reset, con trỏ 
 \midrule
 0x09 & 0x40/0x03 & Reset, sau đó chạy chế độ RED--IR\\
 0x04--0x06 & 0x00 & Xóa con trỏ ghi, tràn và đọc FIFO\\
-0x08 & 0x1F & Cho phép FIFO quay vòng, không lấy trung bình trong chip\\
-0x0A & 0x27 & Thang ADC 4.096 nA, 100 mẫu/giây, xung 411 $\mu$s\\
-0x0C/0x0D & 0x2C & Dòng LED đỏ và hồng ngoại khoảng 8,6 mA\\
+0x08 & 0x5F & FIFO quay vòng và trung bình bốn mẫu trong cảm biến\\
+0x0A & 0x2F & Thang ADC 4.096 nA, 400 mẫu/giây, xung 411 $\mu$s\\
+0x0C/0x0D & 0x32 & Dòng LED đỏ và hồng ngoại khoảng 10 mA\\
 \bottomrule
 \end{tabularx}
 \normalsize
 \end{center}
 
-Mỗi mẫu được gắn thời điểm tăng 10 ms. Thời gian mẫu do đó không phụ thuộc vào thời gian vẽ OLED hay in Serial, giúp khoảng RR được tính nhất quán.
+ADC chạy 400 mẫu/giây và phần cứng trung bình bốn mẫu, vì vậy FIFO cung cấp đúng 100 mẫu/giây. Mỗi mẫu được gắn thời điểm tăng 10 ms; khoảng RR do đó không phụ thuộc thời gian vẽ OLED hay in Serial.
 
 \subsection{Phát hiện ngón tay và tiền xử lý}
 
-Giá trị IR nền khi không đặt tay đo được khoảng 330--400, trong khi đặt tay đạt khoảng 132.000--137.000. Em dùng hai ngưỡng nhận/nhả để trạng thái ngón tay không thay đổi liên tục. Khi rời tay, bộ đếm nhịp, cửa sổ AC/DC và các giá trị đo được xóa.
+Giá trị IR nền khi không đặt tay đo được khoảng 330--400, trong khi đặt tay đạt khoảng 132.000--137.000. Em dùng hai ngưỡng nhận/nhả để trạng thái ngón tay không thay đổi liên tục. Hụt tín hiệu ngắn được giữ tối đa 450 ms để chống rung; nếu rời tay đủ lâu, bộ đếm nhịp, cửa sổ AC/DC và kết quả phiên cũ được xóa. Khi đặt lại, chương trình yêu cầu làm sạch MAX30102 và FIFO trước khi bắt đầu phiên mới.
 
 Thành phần DC được ước lượng bằng bộ lọc IIR chậm. Thành phần AC là hiệu giữa mẫu và DC; nó tiếp tục được làm mượt để giảm nhiễu cao tần. Tín hiệu sử dụng số thực đơn và không cần thư viện xử lý tín hiệu bên ngoài.
 
 \Needspace{0.38\textheight}
-\begin{lstlisting}[style=firmware,caption={Ngưỡng trễ nhận ngón tay và xóa trạng thái khi rời tay}]
-(*@\VNCodeComment{Chọn ngưỡng IR theo trạng thái trước đó để tạo vùng trễ khi nhận hoặc bỏ ngón tay.}@*)
-bool hasFinger = ppg.fingerPresent ?
-(*@\VNCodeComment{Khi đã nhận ngón tay dùng ngưỡng 7.000; khi chưa nhận dùng ngưỡng 10.000 để chống dao động.}@*)
-                   (irValue > 7000) : (irValue > 10000);
-(*@\VNCodeComment{Đi vào nhánh xử lý khi mẫu hiện tại không còn đủ điều kiện có ngón tay.}@*)
+\begin{lstlisting}[style=firmware,caption={Ngưỡng trễ, xác nhận rời tay và khởi tạo phiên đo mới}]
+(*@\VNCodeComment{Dùng hai ngưỡng IR để tạo vùng trễ: 7.000 khi đã có tay và 10.000 khi chưa có tay.}@*)
+bool hasFinger = ppg.fingerPresent ? (irValue > 7000) : (irValue > 10000);
+(*@\VNCodeComment{Xử lý riêng các mẫu chưa đạt ngưỡng có ngón tay.}@*)
 if (!hasFinger) {
-(*@\VNCodeComment{Nếu vừa chuyển từ có sang không có ngón tay thì xóa các kết quả đo của phiên trước.}@*)
-  if (ppg.fingerPresent) PPG_ResetMetrics();
-(*@\VNCodeComment{Đặt mức nền kênh đỏ bằng mẫu hiện tại để bộ lọc khởi động lại đúng mức tín hiệu.}@*)
-  state.dcRed = redValue;
-(*@\VNCodeComment{Đặt mức nền kênh hồng ngoại theo cùng nguyên tắc.}@*)
-  state.dcIr = irValue;
-(*@\VNCodeComment{Dừng xử lý mẫu vì không được phép tính BPM hoặc SpO2 khi chưa có ngón tay.}@*)
+(*@\VNCodeComment{Khi vẫn đang ở trạng thái không tay, cập nhật nền và chờ một phiên mới.}@*)
+  if (!ppg.fingerPresent) {
+    maxHardwareFreshForSession = false;
+    state.dcRed = redValue;
+    state.dcIr = irValue;
+    return;
+  }
+(*@\VNCodeComment{Ghi mốc bắt đầu hụt tín hiệu thay vì xóa kết quả ngay vì ngón tay có thể chỉ rung nhẹ.}@*)
+  if (state.fingerReleaseStartMs == 0) {
+    state.fingerReleaseStartMs = sampleTimeMs;
+  }
+(*@\VNCodeComment{Chỉ xác nhận rời tay sau 450 ms liên tục rồi xóa toàn bộ số đo của phiên cũ.}@*)
+  if (sampleTimeMs - state.fingerReleaseStartMs >=
+      FINGER_RELEASE_CONFIRM_MS) {
+    PPG_ResetMetrics();
+    ppgFilter.dcRed = redValue;
+    ppgFilter.dcIr = irValue;
+  }
   return;
-(*@\VNCodeComment{Kết thúc nhánh không có ngón tay.}@*)
 }
-(*@\VNCodeComment{Dòng trống tách phần loại bỏ mẫu với phần khởi tạo một phiên đo mới.}@*)
 
-(*@\VNCodeComment{Kiểm tra đây có phải mẫu hợp lệ đầu tiên sau khi đặt ngón tay hay không.}@*)
+(*@\VNCodeComment{Yêu cầu vòng lặp khởi tạo lại MAX30102 và FIFO trước khi nhận mẫu của người đo mới.}@*)
+if (!ppg.fingerPresent && !maxHardwareFreshForSession) {
+  maxReinitRequested = true;
+  return;
+}
+
+(*@\VNCodeComment{Nếu tay quay lại sau ít nhất 180 ms, xóa cạnh, cực tính và RR cũ để BPM có thể bắt lại.}@*)
+if (ppg.fingerPresent && state.fingerReleaseStartMs != 0 &&
+    sampleTimeMs - state.fingerReleaseStartMs >=
+      FINGER_GAP_NEW_SESSION_MS) {
+  PPG_ResetMetrics();
+  ppg.redRaw = redValue;
+  ppg.irRaw = irValue;
+}
+state.fingerReleaseStartMs = 0;
+
+(*@\VNCodeComment{Khởi tạo trạng thái và hai mức nền từ mẫu hợp lệ đầu tiên của phiên mới.}@*)
 if (!ppg.fingerPresent) {
-(*@\VNCodeComment{Ghi nhận cảm biến đang có ngón tay.}@*)
   ppg.fingerPresent = true;
-(*@\VNCodeComment{Lưu thời điểm bắt đầu phiên đo để các bước sau biết tuổi của tín hiệu.}@*)
   state.fingerStartMs = sampleTimeMs;
-(*@\VNCodeComment{Khởi tạo mức nền kênh đỏ bằng mẫu đầu tiên của phiên đo.}@*)
   state.dcRed = redValue;
-(*@\VNCodeComment{Khởi tạo mức nền kênh hồng ngoại bằng mẫu đầu tiên của phiên đo.}@*)
   state.dcIr = irValue;
-(*@\VNCodeComment{Kết thúc khối khởi tạo phiên đo.}@*)
 }
 \end{lstlisting}
 
@@ -115,29 +133,74 @@ Giá trị SpO$_2$ hiện là ước lượng phục vụ đồ án, chưa phả
 
 \subsection{Xác nhận nhịp và khởi tạo BPM}
 
-Bộ dò sử dụng cạnh vượt ngưỡng theo biên độ tín hiệu và khoảng trơ 280 ms. Trong giai đoạn chưa khóa, hai cực tính được theo dõi song song; khoảng RR hợp lệ đầu tiên được xuất ngay, còn các nhịp sau chỉ được nhận nếu không lệch quá 22 BPM so với giá trị đang có.
+Bộ dò sử dụng cạnh vượt ngưỡng theo biên độ tín hiệu và khoảng trơ 280 ms. Trong giai đoạn chưa khóa, hai cực tính được theo dõi song song; khoảng RR hợp lệ đầu tiên được xuất ngay, còn các nhịp sau chỉ được làm mượt khi lệch không quá 18 BPM so với giá trị đang có.
 
 \Needspace{0.34\textheight}
-\begin{lstlisting}[style=firmware,caption={Điều kiện phát hiện nhịp và hiển thị BPM sớm}]
-(*@\VNCodeComment{Tạo ngưỡng thích nghi theo biên độ bao và giữ sàn 22 để loại nhiễu nhỏ.}@*)
-float peakThreshold = max(22.0f, state.envelope * 0.55f);
-(*@\VNCodeComment{Tìm đồng thời cạnh dương và cạnh âm vì dạng sóng thực tế có thể bị đảo.}@*)
+\begin{lstlisting}[style=firmware,caption={Theo dõi đủ hai cực tính, xuất BPM sơ bộ và khóa bằng RR}]
+(*@\VNCodeComment{Tạo ngưỡng thích nghi bằng 55\% đường bao và giữ sàn 22 để loại nhiễu nền.}@*)
+float peakThreshold = state.envelope * 0.55f;
+if (peakThreshold < 22.0f) peakThreshold = 22.0f;
+(*@\VNCodeComment{Phát hiện đồng thời cạnh dương và cạnh âm vì dạng sóng thực tế có thể bị đảo.}@*)
 bool crossedPositive = state.previousFiltered <= peakThreshold &&
                        state.filtered > peakThreshold;
 bool crossedNegative = state.previousFiltered >= -peakThreshold &&
                        state.filtered < -peakThreshold;
-(*@\VNCodeComment{Khi chưa khóa cực tính, lưu riêng thời điểm cạnh dương và cạnh âm.}@*)
-if (state.pulsePolarity == 0 && crossedPositive) {
-  uint32_t interval = now - state.positiveEdgeMs;
-(*@\VNCodeComment{Chỉ khóa cạnh dương khi hai mốc tạo thành một khoảng RR hợp lệ.}@*)
-  if (state.positiveEdgeMs != 0 && interval >= 333 && interval <= 1500) {
-    state.pulsePolarity = 1;
-(*@\VNCodeComment{Xuất BPM ngay từ khoảng RR đầu tiên, không chờ thêm chu kỳ làm mượt.}@*)
-    ppg.bpm = 60000.0f / interval;
-    ppg.heartRateValid = true;
+
+(*@\VNCodeComment{Khi chưa biết cực tính, giữ mốc của cả hai phía cho đến khi một phía tạo RR hợp lệ.}@*)
+if (state.pulsePolarity == 0) {
+  if (crossedPositive) {
+    if (state.positiveEdgeMs != 0) {
+      uint32_t interval = now - state.positiveEdgeMs;
+      if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
+(*@\VNCodeComment{Khóa cực tính dương và công bố ngay BPM từ khoảng RR đầy đủ đầu tiên.}@*)
+        state.pulsePolarity = 1;
+        ppg.lastBeatMs = now;
+        ppg.bpm = 60000.0f / interval;
+        ppg.heartRateValid = true;
+        ppg.heartRateProvisional = false;
+        state.replaceBpmOnNextInterval = false;
+        state.beatArmed = false;
+      }
+    }
+    state.positiveEdgeMs = now;
   }
-(*@\VNCodeComment{Cập nhật mốc cạnh dương để chuẩn bị so sánh chu kỳ kế tiếp.}@*)
-  state.positiveEdgeMs = now;
+(*@\VNCodeComment{Nhánh âm đối xứng bảo đảm bộ dò vẫn hoạt động khi tín hiệu PPG bị đảo.}@*)
+  if (state.pulsePolarity == 0 && crossedNegative) {
+    if (state.negativeEdgeMs != 0) {
+      uint32_t interval = now - state.negativeEdgeMs;
+      if (interval >= MIN_RR_MS && interval <= MAX_RR_MS) {
+        state.pulsePolarity = -1;
+        ppg.lastBeatMs = now;
+        ppg.bpm = 60000.0f / interval;
+        ppg.heartRateValid = true;
+        ppg.heartRateProvisional = false;
+        state.replaceBpmOnNextInterval = false;
+        state.beatArmed = false;
+      }
+    }
+    state.negativeEdgeMs = now;
+  }
+
+(*@\VNCodeComment{Khi chưa có RR, khoảng giữa hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ.}@*)
+  if (!ppg.heartRateValid && state.positiveEdgeMs != 0 &&
+      state.negativeEdgeMs != 0) {
+    uint32_t halfInterval =
+      state.positiveEdgeMs > state.negativeEdgeMs ?
+        state.positiveEdgeMs - state.negativeEdgeMs :
+        state.negativeEdgeMs - state.positiveEdgeMs;
+    if (halfInterval >= MIN_HALF_RR_MS &&
+        halfInterval <= MAX_HALF_RR_MS) {
+      float provisionalBPM = 30000.0f / halfInterval;
+(*@\VNCodeComment{Chỉ công bố số sơ bộ trong miền 45--140 BPM để loại cạnh giả lúc vừa đặt tay.}@*)
+      if (provisionalBPM >= MIN_PROVISIONAL_BPM &&
+          provisionalBPM <= MAX_PROVISIONAL_BPM) {
+        ppg.bpm = provisionalBPM;
+        ppg.heartRateValid = true;
+        ppg.heartRateProvisional = true;
+        state.provisionalBpmMs = now;
+      }
+    }
+  }
 }
 \end{lstlisting}
 
@@ -145,31 +208,42 @@ if (state.pulsePolarity == 0 && crossedPositive) {
 
 \Needspace{0.40\textheight}
 \subsection{\texorpdfstring{Ratio-of-ratios cho SpO$_2$}{Ratio-of-ratios cho SpO2}}
-\begin{lstlisting}[style=firmware,caption={Tính tỷ số quang và giá trị SpO2 nguyên mẫu}]
-(*@\VNCodeComment{Tính giá trị hiệu dụng của thành phần AC kênh đỏ từ tổng bình phương trong cửa sổ.}@*)
+\begin{lstlisting}[style=firmware,caption={Đầy đủ điều kiện chất lượng và cập nhật SpO2 nguyên mẫu}]
+(*@\VNCodeComment{Tính RMS của hai thành phần AC trong cửa sổ 64 mẫu.}@*)
 float redRms = sqrtf((float)(state.redSquareSum /
-(*@\VNCodeComment{Chia tổng bình phương cho số mẫu trước khi lấy căn để nhận RMS đúng chuẩn.}@*)
                              state.windowSamples));
-(*@\VNCodeComment{Bắt đầu phép tính RMS tương tự cho kênh hồng ngoại.}@*)
 float irRms = sqrtf((float)(state.irSquareSum /
-(*@\VNCodeComment{Hoàn tất phép tính RMS kênh hồng ngoại theo số mẫu của cửa sổ.}@*)
                             state.windowSamples));
-(*@\VNCodeComment{Tính tỷ số chuẩn hóa giữa AC/DC của kênh đỏ và AC/DC của kênh hồng ngoại.}@*)
-float ratio = (redRms / state.dcRed) / (irRms / state.dcIr);
-(*@\VNCodeComment{Dòng trống tách phép tính tỷ số với bước kiểm tra miền hợp lệ.}@*)
+(*@\VNCodeComment{Tính chỉ số tưới máu từ AC/DC kênh hồng ngoại và đổi sang thang chất lượng 0--99.}@*)
+float perfusion = (state.dcIr > 1.0f) ?
+                    (100.0f * irRms / state.dcIr) : 0.0f;
+ppg.signalQuality = constrain(perfusion * 35.0f, 0.0f, 99.0f);
 
-(*@\VNCodeComment{Chỉ ước lượng SpO2 khi tỷ số nằm trong miền 0,2 đến 2,0 để loại mẫu bất thường.}@*)
-if (ratio > 0.2f && ratio < 2.0f) {
-(*@\VNCodeComment{Áp dụng đường hiệu chuẩn tuyến tính của nguyên mẫu để đổi tỷ số quang sang phần trăm SpO2.}@*)
-  float estimatedSpO2 = constrain(110.0f - 25.0f * ratio,
-(*@\VNCodeComment{Giới hạn kết quả trong khoảng 70--100\% để tránh giá trị hiển thị phi thực tế.}@*)
-                                  70.0f, 100.0f);
-(*@\VNCodeComment{Kiểm tra hệ thống đã có kết quả SpO2 hợp lệ từ cửa sổ trước hay chưa.}@*)
-  ppg.spo2 = ppg.spo2Valid ?
-(*@\VNCodeComment{Nếu đã có thì làm mượt 80/20; nếu chưa có thì dùng ngay ước lượng đầu tiên.}@*)
-             0.8f * ppg.spo2 + 0.2f * estimatedSpO2 : estimatedSpO2;
-(*@\VNCodeComment{Kết thúc nhánh cập nhật SpO2.}@*)
+(*@\VNCodeComment{Chỉ tính tỷ số khi hai mức DC và hai biên độ AC đều đủ lớn.}@*)
+if (state.dcRed > 1.0f && state.dcIr > 1.0f &&
+    redRms > 12.0f && irRms > 12.0f) {
+  float ratio = (redRms / state.dcRed) /
+                (irRms / state.dcIr);
+(*@\VNCodeComment{Loại tỷ số quang nằm ngoài miền 0,2--2,0 rồi áp dụng đường hiệu chuẩn nguyên mẫu.}@*)
+  if (ratio > 0.2f && ratio < 2.0f) {
+    float estimatedSpO2 = constrain(
+      110.0f - 25.0f * ratio, 70.0f, 100.0f);
+(*@\VNCodeComment{Chỉ công nhận cửa sổ có tưới máu đủ và phiên đo đã tồn tại ít nhất 700 ms.}@*)
+    bool estimateValid = perfusion > 0.08f &&
+                         state.fingerStartMs != 0 &&
+                         now - state.fingerStartMs >= 700;
+    if (estimateValid) {
+(*@\VNCodeComment{Dùng ngay ước lượng đầu tiên; các cửa sổ sau được làm mượt theo tỷ lệ 80/20.}@*)
+      ppg.spo2 = ppg.spo2Valid ?
+                   (0.8f * ppg.spo2 +
+                    0.2f * estimatedSpO2) : estimatedSpO2;
+      ppg.spo2Valid = true;
+    }
+  }
 }
+(*@\VNCodeComment{Xóa bộ tích lũy để bắt đầu cửa sổ SpO2 kế tiếp.}@*)
+state.redSquareSum = state.irSquareSum = 0.0;
+state.windowSamples = 0;
 \end{lstlisting}
 
 Hai hệ số 110 và 25 là đường cong nguyên mẫu. Báo cáo không xem chúng là hệ số y tế đã hiệu chuẩn.
@@ -207,7 +281,7 @@ Hợp đồng dữ liệu và kiểm tra dashboard & 3 giờ & Trường JSON v�
 Không đặt ngón tay & IR khoảng 330--400; BPM/SpO$_2$ ở WAIT & \OK\\
 Đặt ngón tay ổn định & IR khoảng 132.000--137.000 & Nhận diện biên độ rõ\\
 Sau thời gian hội tụ & BPM khoảng 72--83 qua các lần thử & \OK\\
-Thời gian xuất kết quả tổng hợp & BPM sơ bộ dưới 1 giây, xác nhận không quá 1,75 giây; SpO$_2$ từ khoảng 0,76 giây & \OK\\
+Thời gian xuất kết quả tổng hợp & BPM sơ bộ có thể dưới 1 giây, xác nhận theo RR; SpO$_2$ từ khoảng 1 giây khi tín hiệu đạt chuẩn & \OK\\
 Dạng sóng đảo cực tính & Bộ dò tự khóa cạnh dương hoặc âm và vẫn tính đúng BPM & \OK\\
 Ước lượng SpO$_2$ thử nghiệm & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Rút ngón tay & Xóa cờ hợp lệ và cửa sổ đo & \OK\\

@@ -92,16 +92,36 @@ Dashboard cập nhật mỗi 0,25 giây và hiển thị BPM, SpO$_2$, chất l�
 
 \Needspace{0.26\textheight}
 \begin{lstlisting}[style=firmware,caption={Tự phân tích và định tuyến yêu cầu HTTP}]
+(*@\VNCodeComment{Khai báo bộ định tuyến nhận client và dòng đầu của yêu cầu HTTP.}@*)
+void HTTP_RouteRequest(WiFiClient &client, char *requestLine) {
+  char method[8] = {0};
+  char path[96] = {0};
 (*@\VNCodeComment{Tách phương thức và đường dẫn ngay từ dòng đầu của yêu cầu HTTP.}@*)
-if (sscanf(requestLine, "%7s %95s", method, path) != 2) {
+  if (sscanf(requestLine, "%7s %95s", method, path) != 2) {
 (*@\VNCodeComment{Yêu cầu không đúng cấu trúc được đưa về trang dashboard an toàn.}@*)
-  HTTP_SendDashboard(client);
-  return;
-}
+    HTTP_SendDashboard(client);
+    return;
+  }
+(*@\VNCodeComment{Bỏ chuỗi truy vấn để các phép so sánh chỉ dùng phần đường dẫn chuẩn.}@*)
+  char *query = strchr(path, '?');
+  if (query != nullptr) *query = '\0';
+
 (*@\VNCodeComment{Định tuyến API trạng thái do nhóm tự viết, không gọi WebServer có sẵn.}@*)
-if (strcmp(method, "GET") == 0 &&
-    strcmp(path, "/api/status") == 0) {
-  HTTP_SendStatus(client);
+  if (strcmp(method, "GET") == 0 &&
+      strcmp(path, "/api/status") == 0) {
+    HTTP_SendStatus(client);
+(*@\VNCodeComment{Yêu cầu POST thứ nhất đặt bộ đếm bước về 0.}@*)
+  } else if (strcmp(method, "POST") == 0 &&
+             strcmp(path, "/api/reset-steps") == 0) {
+    Web_ResetSteps(client);
+(*@\VNCodeComment{Yêu cầu POST thứ hai hủy trạng thái cảnh báo té ngã và cập nhật buzzer.}@*)
+  } else if (strcmp(method, "POST") == 0 &&
+             strcmp(path, "/api/reset-alert") == 0) {
+    Web_ResetAlert(client);
+(*@\VNCodeComment{Mọi đường dẫn lạ và địa chỉ thăm dò captive portal đều nhận dashboard.}@*)
+  } else {
+    HTTP_SendDashboard(client);
+  }
 }
 \end{lstlisting}
 
@@ -145,11 +165,43 @@ Vòng lặp chính dùng mốc \Code{millis()} thay cho trì hoãn dài. GPS đ�
 
 \Needspace{0.38\textheight}
 \begin{lstlisting}[style=firmware,caption={Các tác vụ có chu kỳ độc lập trong vòng lặp chính}]
+(*@\VNCodeComment{Phục vụ DNS và HTTP khi Access Point cùng captive portal đã khởi tạo thành công.}@*)
+if (wifiPortalOK) {
+  DNS_Poll();
+  HTTP_Poll();
+}
 (*@\VNCodeComment{Đọc toàn bộ byte GPS đang chờ để tránh tràn bộ đệm UART và mất câu NMEA.}@*)
 GPS_Poll();
 (*@\VNCodeComment{Cập nhật trạng thái phát âm mà không chặn các tác vụ còn lại.}@*)
 Buzzer_Update();
-(*@\VNCodeComment{Dòng trống phân tách hai tác vụ chạy liên tục với nhóm tác vụ chạy theo chu kỳ.}@*)
+
+(*@\VNCodeComment{Rút tối đa ba nhóm FIFO mỗi vòng để theo kịp luồng PPG nhưng vẫn nhường thời gian cho web.}@*)
+if (maxOK) {
+  for (uint8_t batch = 0; batch < 3; batch++) {
+    int8_t result = MAX30102_ReadFIFO();
+    if (result == FIFO_NO_DATA) break;
+    if (result == FIFO_BUS_ERROR) {
+      maxOK = false;
+      PPG_ResetMetrics();
+      ppg.redRaw = ppg.irRaw = 0;
+      Serial.println("[MAX30102] Mat ket noi I2C");
+      break;
+    }
+  }
+}
+
+(*@\VNCodeComment{Làm sạch MAX30102 và FIFO theo yêu cầu của phiên đo mới hoặc lần bắt BPM lại.}@*)
+if (maxOK && maxReinitRequested) {
+  maxReinitRequested = false;
+  if (MAX30102_Init()) {
+    PPG_ResetMetrics();
+    maxHardwareFreshForSession = true;
+  } else {
+    maxOK = false;
+    maxHardwareFreshForSession = false;
+    Serial.println("[MAX30102] Loi khoi tao lai phien do");
+  }
+}
 
 (*@\VNCodeComment{Chỉ xử lý IMU khi khoảng thời gian lấy mẫu quy định đã trôi qua.}@*)
 if (millis() - lastIMUMs >= IMU_PERIOD_MS) {
@@ -159,11 +211,35 @@ if (millis() - lastIMUMs >= IMU_PERIOD_MS) {
   if (imuOK) {
 (*@\VNCodeComment{Nếu đọc được ba trục gia tốc thì chuyển mẫu sang thuật toán phát hiện té ngã.}@*)
     if (IMU_ReadAccel(ax, ay, az)) Fall_Process(ax, ay, az);
-(*@\VNCodeComment{Đánh dấu IMU mất kết nối khi thao tác đọc thất bại để tránh dùng dữ liệu cũ.}@*)
-    else imuOK = false;
+(*@\VNCodeComment{Đánh dấu và ghi lỗi khi thao tác đọc IMU thất bại để không dùng dữ liệu cũ.}@*)
+    else {
+      imuOK = false;
+      Serial.println("[IMU] Mat ket noi I2C");
+    }
 (*@\VNCodeComment{Kết thúc nhánh kiểm tra trạng thái IMU.}@*)
   }
 (*@\VNCodeComment{Kết thúc khối tác vụ IMU theo chu kỳ.}@*)
+}
+(*@\VNCodeComment{Hủy cờ fix nếu GPS không cập nhật vị trí hợp lệ trong 15 giây.}@*)
+if (gpsFix && millis() - lastGPSFixMs > 15000) gpsFix = false;
+
+(*@\VNCodeComment{Sau mỗi hai giây, thử khởi tạo lại từng mô-đun I2C đang mất kết nối.}@*)
+if (millis() - lastProbeMs >= REPROBE_PERIOD_MS) {
+  lastProbeMs = millis();
+  if (!oledOK && I2C_DevicePresent(OLED_ADDR)) {
+    oledOK = OLED_Init();
+    if (oledOK) Serial.println("[OLED] Da ket noi lai");
+  }
+  if (!imuOK && IMU_Init()) {
+    imuOK = true;
+    Serial.println("[IMU] Da ket noi lai");
+  }
+  if (!maxOK && MAX30102_Init()) {
+    PPG_ResetMetrics();
+    maxOK = true;
+    maxHardwareFreshForSession = true;
+    Serial.println("[MAX30102] Da ket noi lai");
+  }
 }
 (*@\VNCodeComment{Kiểm tra đã đến thời điểm làm mới màn hình hay chưa.}@*)
 if (millis() - lastDisplayMs >= DISPLAY_PERIOD_MS) {

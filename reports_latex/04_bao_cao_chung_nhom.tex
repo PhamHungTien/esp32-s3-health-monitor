@@ -230,6 +230,8 @@ Hai endpoint POST cho phép đặt lại số bước và hủy cảnh báo. Das
 
 MAX30102 cung cấp hai kênh quang RED/IR ở 100 Hz. Trong 0,35 giây đầu, bộ lọc bám nhanh theo mức DC để xung đặt tay không làm ngưỡng nhịp tăng sai. Sau đó, hai cạnh trái dấu tạo BPM sơ bộ từ nửa chu kỳ; cạnh cùng cực tính kế tiếp xác nhận RR đầy đủ và thay số sơ bộ. Nếu không có RR xác nhận trong 1,8 giây, số sơ bộ tự bị hủy. SpO$_2$ dùng tỷ lệ giữa AC/DC trong cửa sổ 64 mẫu, được xét độc lập với BPM và có thể xuất sau khoảng một giây nếu tín hiệu quang đạt điều kiện.
 
+Ngưỡng nhận tay là IR lớn hơn 10.000; sau khi đã nhận, ngưỡng nhả giảm còn 7.000 để tạo vùng trễ. Hụt tín hiệu dưới 450 ms chưa xóa số đo, nhưng nếu tay quay lại sau ít nhất 180 ms thì cạnh, cực tính và RR cũ bị xóa để bắt đầu phiên mới. Khi đặt lại tay hoặc bộ dò chưa tìm được BPM sau 3,5 giây, vòng lặp yêu cầu khởi tạo lại MAX30102 và FIFO; vì vậy việc bắt lại không phụ thuộc thao tác mở Serial Monitor.
+
 \subsection{Phát hiện té ngã}
 
 Độ lớn gia tốc ba trục được đưa qua chuỗi trạng thái NORMAL, FREEFALL, IMPACT và ALERT. Cảnh báo chỉ sinh ra nếu ba hiện tượng rơi tự do, va đập và ít chuyển động xuất hiện đúng thứ tự trong các cửa sổ thời gian cho phép.
@@ -272,17 +274,17 @@ if (result == FIFO_BUS_ERROR) {
 
 \Needspace{0.24\textheight}
 \begin{lstlisting}[style=firmware,caption={Khoảng RR hợp lệ đầu tiên tạo BPM ban đầu}]
-(*@\VNCodeComment{Kiểm tra hệ thống đã có một kết quả BPM hợp lệ trong phiên đo hiện tại hay chưa.}@*)
-if (!ppg.heartRateValid) {
-(*@\VNCodeComment{Ở nhịp hợp lệ đầu tiên, dùng trực tiếp BPM tức thời để giao diện hiện kết quả sớm.}@*)
+(*@\VNCodeComment{Dùng ngay RR đầy đủ nếu giá trị trước là sơ bộ, chưa hợp lệ hoặc bộ dò vừa bắt đầu lại.}@*)
+if (ppg.heartRateProvisional || !ppg.heartRateValid ||
+    state.replaceBpmOnNextInterval) {
   ppg.bpm = instantBPM;
-(*@\VNCodeComment{Đánh dấu kết quả đã hợp lệ để các nhịp sau chuyển sang chế độ làm mượt.}@*)
   ppg.heartRateValid = true;
-(*@\VNCodeComment{Chỉ nhận BPM tiếp theo nếu nó lệch không quá 22 BPM so với giá trị đang hiển thị.}@*)
-} else if (fabsf(instantBPM - ppg.bpm) <= 22.0f) {
-(*@\VNCodeComment{Kết hợp 80\% giá trị cũ với 20\% giá trị mới để giảm dao động giữa các nhịp.}@*)
-  ppg.bpm = 0.80f * ppg.bpm + 0.20f * instantBPM;
-(*@\VNCodeComment{Kết thúc nhánh lựa chọn giữa khởi tạo nhanh và cập nhật đã lọc.}@*)
+  ppg.heartRateProvisional = false;
+  state.replaceBpmOnNextInterval = false;
+(*@\VNCodeComment{Chỉ làm mượt nhịp kế tiếp khi lệch không quá 18 BPM so với số đang hiển thị.}@*)
+} else if (fabsf(instantBPM - ppg.bpm) <= 18.0f) {
+(*@\VNCodeComment{Giữ 90\% giá trị cũ và nhận 10\% giá trị mới để OLED ổn định hơn khi ngón tay rung nhẹ.}@*)
+  ppg.bpm = 0.90f * ppg.bpm + 0.10f * instantBPM;
 }
 \end{lstlisting}
 
@@ -313,15 +315,52 @@ if (peakArmed && dynamicFiltered > 0.11f &&
   }
 (*@\VNCodeComment{Kết thúc điều kiện xác nhận đỉnh dương.}@*)
 }
-(*@\VNCodeComment{Dòng trống phân tách thuật toán đếm bước với điều kiện phát cảnh báo té ngã.}@*)
+(*@\VNCodeComment{Máy trạng thái dưới đây giữ đủ chuỗi NORMAL--FREE\_FALL--IMPACT--ALERT như firmware.}@*)
+switch (fallState) {
+  case FALL_NORMAL:
+    if (accelerationG < 0.45f) {
+      if (lowGStartMs == 0) lowGStartMs = now;
+      if (now - lowGStartMs >= 120) {
+        fallState = FALL_FREE_FALL;
+        fallStateMs = now;
+      }
+    } else {
+      lowGStartMs = 0;
+    }
+(*@\VNCodeComment{Va đập trực tiếp trên 2,8 g cũng có thể mở ngay giai đoạn kiểm tra bất động.}@*)
+    if (accelerationG > 2.8f) {
+      fallState = FALL_IMPACT;
+      fallStateMs = now;
+    }
+    break;
 
-(*@\VNCodeComment{Sau va đập, yêu cầu bất động hơn 1.800 ms và mức chuyển động dưới 0,08 g.}@*)
-if (now - fallStateMs > 1800 && motionLevel < 0.08f &&
-(*@\VNCodeComment{Đồng thời yêu cầu tổng gia tốc nằm gần 1 g, từ 0,72 đến 1,28 g.}@*)
-    accelerationG > 0.72f && accelerationG < 1.28f) {
-(*@\VNCodeComment{Chuyển sang trạng thái cảnh báo khi các điều kiện sau va đập đều được thỏa mãn.}@*)
-  fallState = FALL_ALERT;
-(*@\VNCodeComment{Kết thúc điều kiện xác nhận cảnh báo té ngã.}@*)
+  case FALL_FREE_FALL:
+(*@\VNCodeComment{Sau rơi tự do phải có va đập trên 2,2 g trong 1.200 ms; quá hạn thì hủy chuỗi.}@*)
+    if (accelerationG > 2.2f) {
+      fallState = FALL_IMPACT;
+      fallStateMs = now;
+    } else if (now - fallStateMs > 1200) {
+      fallState = FALL_NORMAL;
+      lowGStartMs = 0;
+    }
+    break;
+
+  case FALL_IMPACT:
+(*@\VNCodeComment{Sau va đập, chỉ cảnh báo khi bất động hơn 1.800 ms và tổng gia tốc trở về gần 1 g.}@*)
+    if (now - fallStateMs > 1800 && motionLevel < 0.08f &&
+        accelerationG > 0.72f && accelerationG < 1.28f) {
+      fallState = FALL_ALERT;
+      fallStateMs = now;
+      Serial.println(
+        "[ALERT] PHAT HIEN TE NGA - CAN KIEM TRA NGUOI DUNG");
+    } else if (now - fallStateMs > 5000) {
+      fallState = FALL_NORMAL;
+    }
+    break;
+
+  case FALL_ALERT:
+(*@\VNCodeComment{Giữ cảnh báo để OLED, buzzer và dashboard tiếp tục phản ánh cùng một trạng thái.}@*)
+    break;
 }
 \end{lstlisting}
 
@@ -376,7 +415,7 @@ Gia tốc nghỉ & 1,07--1,08$g$ & \OK\\
 MAX30102 rời tay & IR 330--400, kết quả ở WAIT & \OK\\
 MAX30102 đặt tay & IR 132.000--137.000 & \OK\\
 Nhịp tim & BPM quan sát khoảng 72--83 qua các lần thử & \OK\\
-Thời gian PPG tổng hợp & BPM sơ bộ dưới 1 giây, xác nhận không quá 1,75 giây; SpO$_2$ từ khoảng 0,76 giây & \OK\\
+Thời gian PPG tổng hợp & BPM sơ bộ có thể dưới 1 giây, xác nhận theo RR; SpO$_2$ từ khoảng 1 giây khi tín hiệu đạt chuẩn & \OK\\
 Dạng sóng PPG đảo & Bộ dò tự nhận cực tính dương/âm và vẫn khôi phục đúng BPM & \OK\\
 SpO$_2$ nguyên mẫu & Khoảng 90--96\% trong các lần thử gần nhất & \Pending\\
 Luồng GPS & Hơn 7.000 byte NMEA; không mất UART & \OK\\
