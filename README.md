@@ -142,6 +142,8 @@ The MAX30102 is configured for RED/IR acquisition at 100 samples per second, 18-
 
 After a valid reading has been obtained, the OLED retains it through short signal gaps instead of replacing it with placeholders. Finger removal must remain below the release threshold for 1.2 seconds before the active measurement is cleared. Results are never carried into the next finger-contact session, preventing a new user from seeing the previous user's measurements.
 
+Periodic USB diagnostic output is emitted only while a Serial Monitor is connected, so a closed CDC port cannot delay MAX30102 FIFO processing. If a provisional half-cycle result is not confirmed, its stale edge timestamps are discarded and detection restarts automatically while the finger remains present.
+
 ### Step counting
 
 The acceleration magnitude is separated into gravity and dynamic components. A step is accepted only after a negative-to-positive threshold sequence, a valid peak interval, and an impact rejection check. The first isolated peak is held until a walking sequence is confirmed.

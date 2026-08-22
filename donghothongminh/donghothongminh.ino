@@ -694,9 +694,16 @@ void PPG_ProcessSample(uint32_t redValue, uint32_t irValue, uint32_t sampleTimeM
   if (ppg.heartRateProvisional && state.provisionalBpmMs != 0 &&
       now - state.provisionalBpmMs > 1800) {
     // Không giữ ước lượng nửa chu kỳ nếu không có RR đầy đủ xác nhận tiếp theo.
+    // Xóa luôn các mốc cạnh cũ để bộ dò bắt đầu một lần tìm mới thay vì mắc
+    // kẹt với những mốc đã sinh ra lúc ngón tay còn đang dịch chuyển.
     ppg.bpm = 0.0f;
     ppg.heartRateValid = false;
     ppg.heartRateProvisional = false;
+    ppg.lastBeatMs = 0;
+    state.pulsePolarity = 0;
+    state.positiveEdgeMs = 0;
+    state.negativeEdgeMs = 0;
+    state.beatArmed = false;
     state.provisionalBpmMs = 0;
   }
 
@@ -1303,7 +1310,9 @@ void loop() {
     OLED_RenderStatus();
   }
 
-  if (millis() - lastPrintMs >= STATUS_PERIOD_MS) {
+  // USB CDC chỉ phục vụ chẩn đoán. Không ghi khi máy tính đã đóng Serial
+  // Monitor để bộ đệm USB không thể ảnh hưởng nhịp đọc FIFO của MAX30102.
+  if (Serial && millis() - lastPrintMs >= STATUS_PERIOD_MS) {
     lastPrintMs = millis();
     Serial.printf(
                   "OLED:%s IMU:%s MAX:%s | FINGER:%s BPM:%.1f(%s) "
